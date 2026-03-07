@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build Linux & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.2'
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Generate Swagger docs
+        run: |
+          go install github.com/swaggo/swag/cmd/swag@latest
+          swag init -g cmd/server/main.go -o docs
+
+      - name: Build Linux amd64
+        env:
+          CGO_ENABLED: 0
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          mkdir -p dist
+          go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
+            -o dist/midjourney-api-linux-amd64 \
+            ./cmd/server
+
+      - name: Build Linux arm64
+        env:
+          CGO_ENABLED: 0
+          GOOS: linux
+          GOARCH: arm64
+        run: |
+          go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
+            -o dist/midjourney-api-linux-arm64 \
+            ./cmd/server
+
+      - name: Package with config template
+        run: |
+          cp config/config.yaml.example dist/config.yaml.example
+          cd dist
+          tar -czf midjourney-api-linux-amd64.tar.gz midjourney-api-linux-amd64 config.yaml.example
+          tar -czf midjourney-api-linux-arm64.tar.gz midjourney-api-linux-arm64 config.yaml.example
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/midjourney-api-linux-amd64.tar.gz
+            dist/midjourney-api-linux-arm64.tar.gz

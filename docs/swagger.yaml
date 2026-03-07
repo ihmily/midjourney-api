@@ -1,0 +1,288 @@
+basePath: /
+definitions:
+  handler.CreateImagineTaskReq:
+    properties:
+      prompt:
+        type: string
+    required:
+    - prompt
+    type: object
+  handler.UpdateAccountHealthRequest:
+    properties:
+      health:
+        type: string
+    type: object
+  response.Response:
+    properties:
+      code:
+        type: string
+      data: {}
+      detail:
+        type: string
+      message:
+        type: string
+    type: object
+  service.TaskActionRequest:
+    properties:
+      action_type:
+        description: 'Operation type: upscale, zoom_out_2x, zoom_out_1_5x, upscale_subtle,
+          upscale_creative'
+        type: string
+      index:
+        description: 'Index: 1-4, representing the position of the image to be operated
+          on'
+        maximum: 4
+        minimum: 1
+        type: integer
+      task_id:
+        description: Original task ID
+        type: string
+    required:
+    - action_type
+    - index
+    - task_id
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: Midjourney Proxy API Service
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: Midjourney Proxy API
+  version: "1.0"
+paths:
+  /api/v1/accounts:
+    get:
+      description: Get all account list
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: List accounts
+      tags:
+      - Account
+  /api/v1/accounts/{id}/health:
+    get:
+      description: Check the health status of the specified account
+      parameters:
+      - description: Account ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Account not found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Check account health
+      tags:
+      - Account
+    put:
+      description: Manually update the health status of the specified account
+      parameters:
+      - description: Account ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Update request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.UpdateAccountHealthRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Account not found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Update account health
+      tags:
+      - Account
+  /api/v1/tasks:
+    get:
+      description: Get the task list
+      parameters:
+      - default: 10
+        description: Page size
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Offset
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: List tasks
+      tags:
+      - Task
+  /api/v1/tasks/{task_id}:
+    get:
+      description: Get task details by task ID
+      parameters:
+      - description: Task ID
+        in: path
+        name: task_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Task not found
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Get task status
+      tags:
+      - Task
+  /api/v1/tasks/action:
+    post:
+      consumes:
+      - application/json
+      description: Perform an action on a completed task (upscale, zoom_out_2x, zoom_out_1_5x,
+        upscale_subtle, upscale_creative)
+      parameters:
+      - description: Action request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/service.TaskActionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Action submitted
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Perform task action
+      tags:
+      - Task
+  /api/v1/tasks/imagine:
+    post:
+      consumes:
+      - application/json
+      description: Create a Midjourney image generation task based on the given prompt
+      parameters:
+      - description: Task request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateImagineTaskReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created successfully
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Create Imagine task
+      tags:
+      - Task
+  /api/v1/tasks/queue:
+    get:
+      description: Get the list of tasks currently waiting to be processed
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Get queue list
+      tags:
+      - Task
+  /live:
+    get:
+      description: Check if the service is alive (simple ping)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Service is alive
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Liveness check
+      tags:
+      - System
+schemes:
+- http
+- https
+swagger: "2.0"

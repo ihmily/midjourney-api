@@ -1,0 +1,71 @@
+server:
+  port: 8080
+  mode: debug # debug, release
+
+database:
+  host: localhost
+  port: 5432
+  user: mj_admin
+  password: 123456
+  dbname: midjourney
+  sslmode: disable
+  max_idle_conns: 10
+  max_open_conns: 100
+  log_level: silent # silent, error, warn, info
+
+redis:
+  host: localhost
+  port: 6379
+  password: ""
+  db: 0
+  pool_size: 10
+
+discord:
+  # Midjourney Bot General Configuration (for calling /imagine command and recognizing messages)
+  application_id: "936929561302675456"  # Midjourney Bot Application ID (common to all accounts)
+  imagine_command_id: "938956540159881230"
+  imagine_command_version: "1237876415471554623"
+  api_base_url: "https://discord.com/api/v9"
+  
+  # Configure multiple Discord account listeners
+  accounts:
+    - name: "account1"
+      bot_token: "MTIxxxx"
+      user_token: "MTIxxxx"
+      guild_id: ""
+      channel_id: ""
+    - name: "account2"
+      bot_token: "MTIxxxx"
+      user_token: "MTIxxxx"
+      guild_id: ""
+      channel_id: ""
+
+task:
+  timeout: 300 #
+  max_retries: 3
+  queue_name: "mj:task:queue"
+  worker_count: 3
+
+oss:
+  enable: true
+  provider: aliyun           # OSS provider: s3 / aliyun
+
+  s3:
+    endpoint_url: "https://s3.ap-southeast-1.amazonaws.com"
+    access_key_id: "Your Access Key ID"
+    secret_access_key: "Your Secret Access Key"
+    region: "ap-southeast-1"
+    bucket_name: "midjourney-api"
+    prefix: "midjourney"
+    use_ssl: false
+
+  aliyun:
+    access_key_id: "Your Access Key ID"
+    access_key_secret: "Your Access Key Secret"
+    endpoint: "https://oss-cn-hangzhou.aliyuncs.com"
+    bucket_name: "midjourney-api"
+    prefix: "midjourney"
+    to_sign: false
+    sign_expires: 3600
+    is_cname: false
+    cname_domain: "https://xxxx.xxxx.com"

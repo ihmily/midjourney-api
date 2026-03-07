@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: mj-postgres
+    environment:
+      POSTGRES_USER: mj_admin
+      POSTGRES_PASSWORD: "123456"
+      POSTGRES_DB: midjourney
+    ports:
+      - "5480:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mj_admin"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: mj-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: mj-app
+    ports:
+      - "8080:8080"
+    environment:
+      MJ_DATABASE_HOST: postgres
+      MJ_REDIS_HOST: redis
+    volumes:
+      - ./config/config.yaml:/app/config/config.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
