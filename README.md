@@ -10,6 +10,7 @@ An unofficial Midjourney API service that interacts with Midjourney via Discord 
 - **Task Actions**: Support post-processing actions such as Upscale and Zoom Out
 - **Multi-Account Management**: Configure multiple Discord accounts for concurrent processing and load balancing
 - **Task Queue**: Redis-based async task queue with multi-worker concurrent consumption
+- **Task Callback**: Support task status change callback, including progress updates
 - **Object Storage**: Automatically upload generated images to Aliyun OSS or AWS S3
 - **Swagger Docs**: Built-in API documentation, accessible at `/swagger/index.html`
 
@@ -83,7 +84,7 @@ Access the service at `http://localhost:8080`
 
 ```bash
 # 1. Install dependencies
-go mod download
+go mod download && go mod tidy
 
 # 2. Start dependency services (PostgreSQL + Redis)
 docker-compose up -d postgres redis
@@ -197,8 +198,9 @@ flowchart TB
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/tasks/imagine` | Create an image generation task |
-| `POST` | `/api/v1/tasks/action` | Perform a task action (Upscale / Zoom Out, etc.) |
+| `POST` | `/api/v1/tasks/imagine` | Create an image generation task, supports `callback_url` |
+| `POST` | `/api/v1/tasks/describe` | Create an image describe task, supports `callback_url` |
+| `POST` | `/api/v1/tasks/action` | Perform a task action (Upscale / Zoom Out, etc.), supports `callback_url` |
 | `GET` | `/api/v1/tasks/:task_id` | Get task details |
 | `GET` | `/api/v1/tasks` | List all tasks |
 | `GET` | `/api/v1/tasks/queue` | Get the waiting queue |
@@ -234,7 +236,7 @@ Supported `action_type` values for `/api/v1/tasks/action`:
 ```bash
 curl 'http://localhost:8080/api/v1/tasks/imagine' \
   -H 'Content-Type: application/json' \
-  --data-raw $'{\n  "prompt": "a cute cat"\n}'
+  --data-raw $'{\n  "prompt": "a cute cat",\n  "callback_url": ""\n}'
 ```
 
 **Query task status**
@@ -243,12 +245,24 @@ curl 'http://localhost:8080/api/v1/tasks/imagine' \
 curl http://localhost:8080/api/v1/tasks/{task_id}
 ```
 
+Task status reference:
+
+| Status | Description |
+|--------|-------------|
+| `PENDING` | Task created, waiting to be queued |
+| `SUBMITTED` | Submitted to Discord, awaiting response |
+| `IN_QUEUE` | Accepted by Discord, waiting to be processed |
+| `PROCESSING` | Image is being generated (`progress` field 0~100) |
+| `SUCCESS` | Task completed, `image_url` / `oss_image_url` available |
+| `FAILED` | Task failed, `error_message` contains the reason |
+| `TIMEOUT` | Task timed out |
+
 **Perform an Upscale action**
 
 ```bash
 curl 'http://localhost:8080/api/v1/tasks/action' \
   -H 'Content-Type: application/json' \
-  --data-raw $'{\n  "action_type": "upscale",\n  "index": 4,\n  "task_id": "xxx"\n}'
+  --data-raw $'{\n  "action_type": "upscale",\n  "index": 1,\n  "task_id": "xxx"\n}'
 ```
 
 ## Swagger Documentation

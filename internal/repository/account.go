@@ -133,6 +133,7 @@ func (r *accountRepository) UpdateAccountHealth(ctx context.Context, id uint, he
 	if health == model.AccountHealthHealthy {
 		updates["error_count"] = 0
 		updates["last_error"] = ""
+		updates["current_jobs"] = 0
 	}
 
 	err := r.db.WithContext(ctx).Model(&model.Account{}).

@@ -239,6 +239,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/tasks/describe": {
+            "post": {
+                "description": "Create a Midjourney describe task that generates text prompts based on an image URL",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Task"
+                ],
+                "summary": "Create Describe task",
+                "parameters": [
+                    {
+                        "description": "Describe task request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.CreateDescribeTaskReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created successfully",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/tasks/imagine": {
             "post": {
                 "description": "Create a Midjourney image generation task based on the given prompt",
@@ -368,12 +414,29 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "handler.CreateDescribeTaskReq": {
+            "type": "object",
+            "required": [
+                "image_url"
+            ],
+            "properties": {
+                "callback_url": {
+                    "type": "string"
+                },
+                "image_url": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.CreateImagineTaskReq": {
             "type": "object",
             "required": [
                 "prompt"
             ],
             "properties": {
+                "callback_url": {
+                    "type": "string"
+                },
                 "prompt": {
                     "type": "string"
                 }
@@ -412,6 +475,9 @@ const docTemplate = `{
             "properties": {
                 "action_type": {
                     "description": "Operation type: upscale, zoom_out_2x, zoom_out_1_5x, upscale_subtle, upscale_creative",
+                    "type": "string"
+                },
+                "callback_url": {
                     "type": "string"
                 },
                 "index": {

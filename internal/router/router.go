@@ -26,6 +26,7 @@ func Setup(r *gin.Engine, taskHandler *handler.TaskHandler, accountHandler *hand
 		tasks := v1.Group("/tasks")
 		{
 			tasks.POST("/imagine", taskHandler.CreateImagineTask)
+			tasks.POST("/describe", taskHandler.CreateDescribeTask)
 			tasks.POST("/action", taskHandler.PerformTaskAction)
 			tasks.GET("/:task_id", taskHandler.GetTask)
 			tasks.GET("", taskHandler.ListTasks)

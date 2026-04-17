@@ -19,9 +19,11 @@ import (
 
 type TaskService interface {
 	CreateImagineTask(ctx context.Context, req *CreateTaskRequest) (*TaskResponse, error)
+	CreateDescribeTask(ctx context.Context, req *CreateDescribeTaskRequest) (*TaskResponse, error)
 	GetTask(ctx context.Context, taskID string) (*model.Task, error)
 	ListTasks(ctx context.Context, userID uint, limit, offset int) ([]model.Task, int64, error)
 	ProcessTask(ctx context.Context, msg *TaskMessage) error
+	ProcessDescribeTask(ctx context.Context, msg *TaskDescribeMessage) error
 	GetQueueList(ctx context.Context) (*QueueStatus, error)
 	PerformTaskAction(ctx context.Context, req *TaskActionRequest) (*TaskResponse, error)
 	ProcessActionTask(ctx context.Context, msg *TaskActionMessage) error
@@ -55,8 +57,9 @@ func NewTaskService(
 }
 
 type CreateTaskRequest struct {
-	UserID uint
-	Prompt string
+	UserID      uint
+	Prompt      string
+	CallbackURL string
 }
 
 type TaskResponse struct {
@@ -76,12 +79,13 @@ func (s *taskService) CreateImagineTask(ctx context.Context, req *CreateTaskRequ
 
 	taskID := generateTaskID()
 	task := &model.Task{
-		TaskID:    taskID,
-		UserID:    req.UserID,
-		AccountID: &account.ID,
-		Type:      model.TaskTypeImagine,
-		Prompt:    req.Prompt,
-		Status:    model.TaskStatusPending,
+		TaskID:      taskID,
+		UserID:      req.UserID,
+		AccountID:   &account.ID,
+		Type:        model.TaskTypeImagine,
+		Prompt:      req.Prompt,
+		Status:      model.TaskStatusPending,
+		CallbackURL: req.CallbackURL,
 	}
 
 	if err := s.taskRepo.Create(ctx, task); err != nil {
@@ -134,22 +138,24 @@ func (s *taskService) ListTasks(ctx context.Context, userID uint, limit, offset 
 }
 
 type TaskMessage struct {
-	TaskID    string `json:"task_id"`
-	Prompt    string `json:"prompt"`
-	GuildID   string `json:"guild_id"`
-	ChannelID string `json:"channel_id"`
-	UserToken string `json:"user_token"`
-	AccountID uint   `json:"account_id"`
+	TaskID      string `json:"task_id"`
+	Prompt      string `json:"prompt"`
+	GuildID     string `json:"guild_id"`
+	ChannelID   string `json:"channel_id"`
+	UserToken   string `json:"user_token"`
+	AccountID   uint   `json:"account_id"`
+	CallbackURL string `json:"callback_url"`
 }
 
 func (s *taskService) enqueueTask(ctx context.Context, task *model.Task, account *model.Account) error {
 	msg := TaskMessage{
-		TaskID:    task.TaskID,
-		Prompt:    task.Prompt,
-		GuildID:   account.GuildID,
-		ChannelID: account.ChannelID,
-		UserToken: account.UserToken,
-		AccountID: account.ID,
+		TaskID:      task.TaskID,
+		Prompt:      task.Prompt,
+		GuildID:     account.GuildID,
+		ChannelID:   account.ChannelID,
+		UserToken:   account.UserToken,
+		AccountID:   account.ID,
+		CallbackURL: task.CallbackURL,
 	}
 
 	data, err := json.Marshal(msg)
@@ -255,10 +261,132 @@ func generateTaskID() string {
 	return strings.ReplaceAll(uuid.New().String(), "-", "")
 }
 
+// ===== Describe Task =====
+
+type CreateDescribeTaskRequest struct {
+	UserID      uint
+	ImageURL    string
+	CallbackURL string
+}
+
+type TaskDescribeMessage struct {
+	TaskID      string `json:"task_id"`
+	ImageURL    string `json:"image_url"`
+	GuildID     string `json:"guild_id"`
+	ChannelID   string `json:"channel_id"`
+	UserToken   string `json:"user_token"`
+	AccountID   uint   `json:"account_id"`
+	CallbackURL string `json:"callback_url"`
+}
+
+func (s *taskService) CreateDescribeTask(ctx context.Context, req *CreateDescribeTaskRequest) (*TaskResponse, error) {
+	account, err := s.accountService.GetAvailableAccount(ctx)
+	if err != nil {
+		return nil, apperrors.Wrap(apperrors.ErrCodeAccountUnavailable, "no available account", err)
+	}
+	if account == nil {
+		return nil, apperrors.NewAccountUnavailable("all accounts are busy or unhealthy")
+	}
+
+	taskID := generateTaskID()
+	task := &model.Task{
+		TaskID:      taskID,
+		UserID:      req.UserID,
+		AccountID:   &account.ID,
+		Type:        model.TaskTypeDescribe,
+		Prompt:      req.ImageURL,
+		Status:      model.TaskStatusPending,
+		CallbackURL: req.CallbackURL,
+	}
+
+	if err := s.taskRepo.Create(ctx, task); err != nil {
+		return nil, apperrors.Wrap(apperrors.ErrCodeTaskCreateFailed, "failed to create task", err)
+	}
+
+	if err := s.accountService.IncrementJobs(ctx, account.ID); err != nil {
+		s.logger.Error("Failed to increment account job count, cleaning up task",
+			zap.String("task_id", taskID),
+			zap.Uint("account_id", account.ID),
+			zap.Error(err))
+		if delErr := s.taskRepo.UpdateStatus(ctx, taskID, model.TaskStatusFailed); delErr != nil {
+			s.logger.Warn("Failed to delete failed task", zap.Error(delErr))
+		}
+		return nil, apperrors.Wrap(apperrors.ErrCodeTaskCreateFailed, "failed to increment job count", err)
+	}
+
+	if err := s.enqueueDescribeTask(ctx, task, account); err != nil {
+		s.logger.Error("Failed to enqueue describe task, rolling back",
+			zap.String("task_id", taskID),
+			zap.Uint("account_id", account.ID),
+			zap.Error(err))
+
+		rollbackCtx := context.Background()
+		if decErr := s.accountService.DecrementJobs(rollbackCtx, account.ID); decErr != nil {
+			s.logger.Error("Failed to decrement account job count",
+				zap.Uint("account_id", account.ID),
+				zap.Error(decErr))
+		}
+		if updateErr := s.taskRepo.UpdateStatus(rollbackCtx, taskID, model.TaskStatusFailed); updateErr != nil {
+			s.logger.Warn("Failed to update task status", zap.Error(updateErr))
+		}
+		return nil, apperrors.Wrap(apperrors.ErrCodeTaskCreateFailed, "failed to enqueue describe task", err)
+	}
+
+	return &TaskResponse{
+		TaskID: taskID,
+		Status: model.TaskStatusPending,
+	}, nil
+}
+
+func (s *taskService) enqueueDescribeTask(ctx context.Context, task *model.Task, account *model.Account) error {
+	msg := TaskDescribeMessage{
+		TaskID:      task.TaskID,
+		ImageURL:    task.Prompt,
+		GuildID:     account.GuildID,
+		ChannelID:   account.ChannelID,
+		UserToken:   account.UserToken,
+		AccountID:   account.ID,
+		CallbackURL: task.CallbackURL,
+	}
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	return s.redis.LPush(ctx, s.taskConfig.QueueName, data).Err()
+}
+
+func (s *taskService) ProcessDescribeTask(ctx context.Context, msg *TaskDescribeMessage) error {
+	if err := s.taskRepo.UpdateStatus(ctx, msg.TaskID, model.TaskStatusProcessing); err != nil {
+		return err
+	}
+
+	describeReq := &discord.DescribeRequest{
+		ImageURL:  msg.ImageURL,
+		GuildID:   msg.GuildID,
+		ChannelID: msg.ChannelID,
+		UserToken: msg.UserToken,
+	}
+
+	if lastErr := s.withRetry(msg.TaskID, func() error {
+		return s.discord.Describe(describeReq)
+	}); lastErr != nil {
+		s.handleDiscordCallFailure(ctx, msg.TaskID, msg.AccountID, lastErr)
+		return lastErr
+	}
+
+	if err := s.taskRepo.UpdateStatus(ctx, msg.TaskID, model.TaskStatusSubmitted); err != nil {
+		return err
+	}
+
+	s.accountService.RecordTaskResult(ctx, msg.AccountID, true, "")
+	return nil
+}
+
 type TaskActionRequest struct {
-	TaskID     string `json:"task_id" binding:"required"`           // Original task ID
-	ActionType string `json:"action_type" binding:"required"`       // Operation type: upscale, zoom_out_2x, zoom_out_1_5x, upscale_subtle, upscale_creative
-	Index      int    `json:"index" binding:"required,min=1,max=4"` // Index: 1-4, representing the position of the image to be operated on
+	TaskID      string `json:"task_id" binding:"required"`           // Original task ID
+	ActionType  string `json:"action_type" binding:"required"`       // Operation type: upscale, zoom_out_2x, zoom_out_1_5x, upscale_subtle, upscale_creative
+	Index       int    `json:"index" binding:"required,min=1,max=4"` // Index: 1-4, representing the position of the image to be operated on
+	CallbackURL string `json:"callback_url"`
 }
 
 // PerformTaskAction
@@ -301,10 +429,11 @@ func (s *taskService) PerformTaskAction(ctx context.Context, req *TaskActionRequ
 		TaskID:       newTaskID,
 		UserID:       parentTask.UserID,
 		AccountID:    parentTask.AccountID,
-		ParentTaskID: req.TaskID, // Save parent task ID
+		ParentTaskID: req.TaskID,
 		Type:         taskType,
-		Prompt:       parentTask.Prompt, // Inherit parent task's original prompt
+		Prompt:       parentTask.Prompt,
 		Status:       model.TaskStatusPending,
+		CallbackURL:  req.CallbackURL,
 	}
 
 	if err := s.taskRepo.Create(ctx, newTask); err != nil {
@@ -331,6 +460,7 @@ func (s *taskService) PerformTaskAction(ctx context.Context, req *TaskActionRequ
 		ChannelID:        account.ChannelID,
 		UserToken:        account.UserToken,
 		AccountID:        account.ID,
+		CallbackURL:      req.CallbackURL,
 	}
 
 	if err := s.enqueueActionTask(ctx, actionMsg); err != nil {
@@ -368,6 +498,7 @@ type TaskActionMessage struct {
 	ChannelID        string `json:"channel_id"`
 	UserToken        string `json:"user_token"`
 	AccountID        uint   `json:"account_id"`
+	CallbackURL      string `json:"callback_url"`
 }
 
 func (s *taskService) enqueueActionTask(ctx context.Context, msg *TaskActionMessage) error {

@@ -22,6 +22,7 @@ type TaskType string
 
 const (
 	TaskTypeImagine         TaskType = "IMAGINE"
+	TaskTypeDescribe        TaskType = "DESCRIBE"         // Describe image
 	TaskTypeUpscale         TaskType = "UPSCALE"          // Upscale
 	TaskTypeZoomOut2x       TaskType = "ZOOM_OUT_2X"      // Zoom Out 2x
 	TaskTypeZoomOut1_5x     TaskType = "ZOOM_OUT_1_5X"    // Zoom Out 1.5x
@@ -44,6 +45,8 @@ type Task struct {
 	OSSImageURL      string         `gorm:"type:text" json:"oss_image_url,omitempty"`
 	ErrorMessage     string         `gorm:"type:text" json:"error_message,omitempty"`
 	Buttons          *string        `gorm:"type:json" json:"buttons,omitempty"`
+	Description      string         `gorm:"type:text" json:"description,omitempty"`
+	CallbackURL      string         `gorm:"type:text" json:"callback_url,omitempty"`
 	CreatedAt        time.Time      `gorm:"index:idx_status_created" json:"created_at"`
 	UpdatedAt        time.Time      `json:"updated_at"`
 	FinishedAt       *time.Time     `json:"finished_at,omitempty"`

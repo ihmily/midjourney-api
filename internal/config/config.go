@@ -50,11 +50,13 @@ type DiscordAccount struct {
 }
 
 type DiscordConfig struct {
-	ApplicationID         string           `mapstructure:"application_id"`
-	ImagineCommandID      string           `mapstructure:"imagine_command_id"`
-	ImagineCommandVersion string           `mapstructure:"imagine_command_version"`
-	APIBaseURL            string           `mapstructure:"api_base_url"`
-	Accounts              []DiscordAccount `mapstructure:"accounts"`
+	ApplicationID          string           `mapstructure:"application_id"`
+	ImagineCommandID       string           `mapstructure:"imagine_command_id"`
+	ImagineCommandVersion  string           `mapstructure:"imagine_command_version"`
+	DescribeCommandID      string           `mapstructure:"describe_command_id"`
+	DescribeCommandVersion string           `mapstructure:"describe_command_version"`
+	APIBaseURL             string           `mapstructure:"api_base_url"`
+	Accounts               []DiscordAccount `mapstructure:"accounts"`
 }
 
 type TaskConfig struct {

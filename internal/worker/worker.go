@@ -63,6 +63,27 @@ func (w *Worker) processTask() {
 
 	data := result[1]
 
+	// Try describe message first (image_url field is distinctive)
+	var describeMsg service.TaskDescribeMessage
+	if err := json.Unmarshal([]byte(data), &describeMsg); err == nil && describeMsg.ImageURL != "" {
+		w.logger.Info("Processing describe task",
+			zap.String("task_id", describeMsg.TaskID),
+			zap.String("image_url", describeMsg.ImageURL),
+			zap.String("guild_id", describeMsg.GuildID),
+			zap.String("channel_id", describeMsg.ChannelID))
+
+		if err := w.taskService.ProcessDescribeTask(ctx, &describeMsg); err != nil {
+			w.logger.Error("Failed to process describe task",
+				zap.String("task_id", describeMsg.TaskID),
+				zap.Error(err))
+			return
+		}
+
+		w.logger.Info("Describe task processed successfully",
+			zap.String("task_id", describeMsg.TaskID))
+		return
+	}
+
 	var taskMsg service.TaskMessage
 	if err := json.Unmarshal([]byte(data), &taskMsg); err == nil && taskMsg.Prompt != "" {
 		w.logger.Info("Processing task",

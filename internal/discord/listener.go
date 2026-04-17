@@ -1,9 +1,11 @@
 package discord
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -15,6 +17,10 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
+
+// ossUploadImagineResult controls whether the /imagine 2x2 grid image is uploaded to OSS.
+// Set to false to skip OSS upload for imagine results; set to true to enable.
+const ossUploadImagineResult = false
 
 // Use discordgo for Discord events
 type Listener struct {
@@ -102,7 +108,8 @@ func (l *Listener) handleMessageCreate(s *discordgo.Session, m *discordgo.Messag
 }
 
 func (l *Listener) handleMessageUpdate(s *discordgo.Session, m *discordgo.MessageUpdate) {
-	if m.Author == nil || m.Author.ID != l.midjourneyBotID {
+	// Author may be nil in partial Discord updates; only skip if author is explicitly NOT the MJ bot
+	if m.Author != nil && m.Author.ID != l.midjourneyBotID {
 		return
 	}
 
@@ -128,6 +135,12 @@ func (l *Listener) isMessageMatched(msgID string) bool {
 
 func (l *Listener) updateMatchingTask(parsed *ParsedMessage, msg *discordgo.Message) {
 	if l.isMessageMatched(parsed.MessageID) {
+		return
+	}
+
+	// Handle describe result messages
+	if parsed.IsDescribeResult {
+		l.matchDescribeTask(msg.ChannelID, parsed)
 		return
 	}
 
@@ -264,6 +277,9 @@ func (l *Listener) updateTask(task *model.Task, parsed *ParsedMessage) {
 	oldProgress := task.Progress
 	task.Progress = parsed.Progress
 
+	// deferCallbackForOSS: when OSS upload is pending, delay callback until after upload
+	deferCallbackForOSS := false
+
 	switch parsed.Status {
 	case "pending":
 		if task.Status == model.TaskStatusSubmitted {
@@ -302,9 +318,11 @@ func (l *Listener) updateTask(task *model.Task, parsed *ParsedMessage) {
 			zap.String("Image URL", parsed.ImageURL),
 		)
 
-		if l.ossUploader != nil && parsed.ImageURL != "" {
+		if l.ossUploader != nil && parsed.ImageURL != "" && (ossUploadImagineResult || task.Type != model.TaskTypeImagine) {
+			deferCallbackForOSS = true
 			taskID := task.TaskID
 			imageURL := parsed.ImageURL
+			callbackURL := task.CallbackURL
 			go func() {
 				uploadCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 				defer cancel()
@@ -322,6 +340,10 @@ func (l *Listener) updateTask(task *model.Task, parsed *ParsedMessage) {
 						zap.String("image_url", imageURL),
 						zap.Error(err),
 					)
+					// OSS failed, still callback with current task (no oss_image_url)
+					if latestTask != nil {
+						l.fireCallback(callbackURL, latestTask)
+					}
 					return
 				}
 				if err := l.taskRepo.UpdateOSSImageURL(context.Background(), taskID, ossURL); err != nil {
@@ -329,6 +351,10 @@ func (l *Listener) updateTask(task *model.Task, parsed *ParsedMessage) {
 						zap.String("task_id", taskID),
 						zap.Error(err),
 					)
+				}
+				// Re-fetch task to include oss_image_url, then fire callback
+				if updatedTask, err := l.taskRepo.GetByTaskID(context.Background(), taskID); err == nil && updatedTask != nil {
+					l.fireCallback(callbackURL, updatedTask)
 				}
 			}()
 		}
@@ -360,6 +386,12 @@ func (l *Listener) updateTask(task *model.Task, parsed *ParsedMessage) {
 
 	if err := l.taskRepo.Update(context.Background(), task); err != nil {
 		l.logger.Error("Failed to update task", zap.Error(err))
+		return
+	}
+
+	// Fire callback immediately; skip if OSS upload will handle it
+	if !deferCallbackForOSS {
+		l.fireCallback(task.CallbackURL, task)
 	}
 }
 
@@ -367,4 +399,109 @@ func (l *Listener) markMessageMatched(msgID string) {
 	l.msgMutex.Lock()
 	defer l.msgMutex.Unlock()
 	l.matchedMsgIDs[msgID] = true
+}
+
+// fireCallback sends a POST request to the callback URL with the task result.
+// The request body matches the GET /api/v1/tasks/{task_id} response format.
+func (l *Listener) fireCallback(callbackURL string, task *model.Task) {
+	if callbackURL == "" {
+		return
+	}
+	go func() {
+		body := struct {
+			Code    string      `json:"code"`
+			Message string      `json:"message"`
+			Data    interface{} `json:"data,omitempty"`
+		}{
+			Code:    "SUCCESS",
+			Message: "success",
+			Data:    task,
+		}
+		data, err := json.Marshal(body)
+		if err != nil {
+			l.logger.Error("Callback marshal failed",
+				zap.String("task_id", task.TaskID),
+				zap.Error(err))
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, callbackURL, bytes.NewReader(data))
+		if err != nil {
+			l.logger.Error("Callback request creation failed",
+				zap.String("task_id", task.TaskID),
+				zap.String("callback_url", callbackURL),
+				zap.Error(err))
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			l.logger.Error("Callback request failed",
+				zap.String("task_id", task.TaskID),
+				zap.String("callback_url", callbackURL),
+				zap.Error(err))
+			return
+		}
+		defer resp.Body.Close()
+		l.logger.Info("Callback sent",
+			zap.String("task_id", task.TaskID),
+			zap.String("callback_url", callbackURL),
+			zap.Int("status_code", resp.StatusCode))
+	}()
+}
+
+// matchDescribeTask finds the pending describe task for the channel and updates it with descriptions
+func (l *Listener) matchDescribeTask(channelID string, parsed *ParsedMessage) {
+	tasks, err := l.taskRepo.GetPendingTasks(context.Background(), 50)
+	if err != nil {
+		l.logger.Error("Failed to find describe tasks", zap.Error(err))
+		return
+	}
+
+	for _, task := range tasks {
+		if task.Type != model.TaskTypeDescribe {
+			continue
+		}
+		if task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailed {
+			continue
+		}
+		if task.AccountID == nil {
+			continue
+		}
+
+		account, err := l.accountRepo.GetByID(context.Background(), *task.AccountID)
+		if err != nil || account == nil {
+			continue
+		}
+		if account.ChannelID != channelID {
+			continue
+		}
+
+		l.logger.Info("[Match describe task] Task ID=" + task.TaskID + " Channel ID=" + channelID)
+
+		task.DiscordMessageID = parsed.MessageID
+		task.Status = model.TaskStatusSuccess
+		task.Description = parsed.Descriptions
+		task.Progress = 100
+		now := time.Now()
+		task.FinishedAt = &now
+
+		if err := l.taskRepo.Update(context.Background(), task); err != nil {
+			l.logger.Error("Failed to update describe task", zap.Error(err))
+			return
+		}
+
+		// Fire callback
+		l.fireCallback(task.CallbackURL, task)
+
+		if task.AccountID != nil {
+			l.accountRepo.DecrementJobs(context.Background(), *task.AccountID)
+		}
+		l.markMessageMatched(parsed.MessageID)
+		l.logger.Info("[Describe completed] Task ID=" + task.TaskID + " Message ID=" + parsed.MessageID)
+		return
+	}
+
+	l.logger.Debug("[No matching describe task found] Channel ID=" + channelID)
 }

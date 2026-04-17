@@ -1,6 +1,8 @@
 module github.com/trae/midjourney-api
 
-go 1.23
+go 1.23.0
+
+toolchain go1.23.2
 
 require (
 	github.com/aliyun/aliyun-oss-go-sdk v2.2.10+incompatible

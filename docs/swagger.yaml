@@ -1,7 +1,18 @@
 basePath: /
 definitions:
+  handler.CreateDescribeTaskReq:
+    properties:
+      callback_url:
+        type: string
+      image_url:
+        type: string
+    required:
+    - image_url
+    type: object
   handler.CreateImagineTaskReq:
     properties:
+      callback_url:
+        type: string
       prompt:
         type: string
     required:
@@ -27,6 +38,8 @@ definitions:
       action_type:
         description: 'Operation type: upscale, zoom_out_2x, zoom_out_1_5x, upscale_subtle,
           upscale_creative'
+        type: string
+      callback_url:
         type: string
       index:
         description: 'Index: 1-4, representing the position of the image to be operated
@@ -220,6 +233,37 @@ paths:
           schema:
             $ref: '#/definitions/response.Response'
       summary: Perform task action
+      tags:
+      - Task
+  /api/v1/tasks/describe:
+    post:
+      consumes:
+      - application/json
+      description: Create a Midjourney describe task that generates text prompts based
+        on an image URL
+      parameters:
+      - description: Describe task request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateDescribeTaskReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created successfully
+          schema:
+            $ref: '#/definitions/response.Response'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Create Describe task
       tags:
       - Task
   /api/v1/tasks/imagine:

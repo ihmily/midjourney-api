@@ -20,7 +20,8 @@ func NewTaskHandler(taskService service.TaskService) *TaskHandler {
 }
 
 type CreateImagineTaskReq struct {
-	Prompt string `json:"prompt" binding:"required"`
+	Prompt      string `json:"prompt" binding:"required"`
+	CallbackURL string `json:"callback_url"`
 }
 
 // CreateImagineTask creates an Imagine task
@@ -46,10 +47,50 @@ func (h *TaskHandler) CreateImagineTask(c *gin.Context) {
 	userID := constants.DefaultUserID
 
 	resp, err := h.taskService.CreateImagineTask(ctx, &service.CreateTaskRequest{
-		UserID: userID,
-		Prompt: req.Prompt,
+		UserID:      userID,
+		Prompt:      req.Prompt,
+		CallbackURL: req.CallbackURL,
 	})
 
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Created(c, resp)
+}
+
+type CreateDescribeTaskReq struct {
+	ImageURL    string `json:"image_url" binding:"required"`
+	CallbackURL string `json:"callback_url"`
+}
+
+// CreateDescribeTask creates a Describe task
+// @Summary Create Describe task
+// @Description Create a Midjourney describe task that generates text prompts based on an image URL
+// @Tags Task
+// @Accept json
+// @Produce json
+// @Param request body CreateDescribeTaskReq true "Describe task request"
+// @Success 201 {object} response.Response "Created successfully"
+// @Failure 400 {object} response.Response "Bad request"
+// @Failure 500 {object} response.Response "Internal server error"
+// @Router /api/v1/tasks/describe [post]
+func (h *TaskHandler) CreateDescribeTask(c *gin.Context) {
+	ctx := c.Request.Context()
+	var req CreateDescribeTaskReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	userID := constants.DefaultUserID
+
+	resp, err := h.taskService.CreateDescribeTask(ctx, &service.CreateDescribeTaskRequest{
+		UserID:      userID,
+		ImageURL:    req.ImageURL,
+		CallbackURL: req.CallbackURL,
+	})
 	if err != nil {
 		response.Error(c, err)
 		return

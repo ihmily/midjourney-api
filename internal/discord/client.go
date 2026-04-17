@@ -173,6 +173,73 @@ func generateUUID() string {
 	return uuid.New().String()[:32]
 }
 
+type DescribeRequest struct {
+	ImageURL  string
+	GuildID   string
+	ChannelID string
+	UserToken string
+}
+
+func (c *Client) Describe(req *DescribeRequest) error {
+	payload := InteractionPayload{
+		Type:          2,
+		ApplicationID: c.cfg.ApplicationID,
+		GuildID:       req.GuildID,
+		ChannelID:     req.ChannelID,
+		SessionID:     generateUUID(),
+		Data: InteractionData{
+			Version: c.cfg.DescribeCommandVersion,
+			ID:      c.cfg.DescribeCommandID,
+			Name:    "describe",
+			Type:    1,
+			Options: []InteractionOption{
+				{
+					Type:  3,
+					Name:  "link",
+					Value: req.ImageURL,
+				},
+			},
+			ApplicationCommand: ApplicationCommand{
+				ID:            c.cfg.DescribeCommandID,
+				Type:          1,
+				ApplicationID: c.cfg.ApplicationID,
+				Version:       c.cfg.DescribeCommandVersion,
+				Name:          "describe",
+				Description:   "Describes your image as a prompt.",
+				Options: []CommandOption{
+					{
+						Type:                 11,
+						Name:                 "image",
+						Description:          "The image to describe",
+						Required:             false,
+						DescriptionLocalized: "The image to describe",
+						NameLocalized:        "image",
+					},
+					{
+						Type:                 3,
+						Name:                 "link",
+						Description:          "\u2026",
+						Required:             false,
+						DescriptionLocalized: "\u2026",
+						NameLocalized:        "link",
+					},
+				},
+				DMPermission:         true,
+				Contexts:             []int{0, 1, 2},
+				IntegrationTypes:     []int{0, 1},
+				GlobalPopularityRank: 2,
+				DescriptionLocalized: "Describes your image as a prompt.",
+				NameLocalized:        "describe",
+			},
+			Attachments: []interface{}{},
+		},
+		Nonce:     generateUUID(),
+		Analytics: "slash_ui",
+	}
+
+	return c.doDiscordRequest(payload, req.UserToken, req.GuildID, req.ChannelID)
+}
+
 type ButtonActionRequest struct {
 	CustomID  string // Example: "MJ::JOB::upsample::1::bfcd9434-6f90-47a0-b604-5c2208151a3c"
 	MessageID string

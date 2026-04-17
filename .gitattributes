@@ -1,0 +1,8 @@
+# Set default behavior, automatically normalize line endings to LF on commit
+* text=auto
+
+# Force shell scripts to use LF in the repo and on checkout (essential for bash execution)
+*.sh text eol=lf
+
+# Force Windows batch files to use CRLF
+*.bat text eol=crlf

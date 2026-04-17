@@ -19,12 +19,14 @@ type MessageParser struct {
 }
 
 type ParsedMessage struct {
-	MessageID  string
-	TaskPrompt string
-	Progress   int
-	Status     string // "pending", "processing", "completed", "failed"
-	ImageURL   string
-	Buttons    []string
+	MessageID        string
+	TaskPrompt       string
+	Progress         int
+	Status           string // "pending", "processing", "completed", "failed"
+	ImageURL         string
+	Buttons          []string
+	IsDescribeResult bool   // true if this is a describe result message
+	Descriptions     string // describe result text
 }
 
 func NewMessageParser(midjourneyBotID string, logger *zap.Logger) *MessageParser {
@@ -118,6 +120,29 @@ func (p *MessageParser) ParseDiscordMessage(msg *discordgo.Message) *ParsedMessa
 		parsed.Status = "failed"
 	}
 
+	// Detect describe result: Midjourney returns descriptions in embed.Description
+	describeText := ""
+	for _, embed := range msg.Embeds {
+		if strings.Contains(embed.Description, "1\ufe0f\u20e3") && strings.Contains(embed.Description, "2\ufe0f\u20e3") {
+			describeText = embed.Description
+			break
+		}
+	}
+	// Fallback: also check msg.Content
+	if describeText == "" && strings.Contains(content, "1\ufe0f\u20e3") && strings.Contains(content, "2\ufe0f\u20e3") {
+		describeText = content
+	}
+	if describeText != "" {
+		parsed.IsDescribeResult = true
+		parsed.Descriptions = extractFirstDescription(describeText)
+		parsed.Status = "completed"
+		parsed.Progress = 100
+		p.logger.Info("[Describe result detected]",
+			zap.String("message_id", parsed.MessageID),
+			zap.Int("desc_len", len(parsed.Descriptions)),
+		)
+	}
+
 	return parsed
 }
 
@@ -190,4 +215,26 @@ func (p *MessageParser) removeURLsAndParams(text string) string {
 	result = p.paramRegex.ReplaceAllString(result, "")
 	result = strings.Join(strings.Fields(result), " ")
 	return strings.TrimSpace(result)
+}
+
+// extractFirstDescription extracts only the first numbered description from Midjourney describe results.
+// Input format: "1️⃣ text1\n\n2️⃣ text2\n\n3️⃣ text3\n\n4️⃣ text4"
+func extractFirstDescription(text string) string {
+	marker1 := "1\ufe0f\u20e3"
+	marker2 := "2\ufe0f\u20e3"
+
+	start := strings.Index(text, marker1)
+	if start == -1 {
+		return strings.TrimSpace(text)
+	}
+	start += len(marker1)
+
+	end := strings.Index(text[start:], marker2)
+	var first string
+	if end == -1 {
+		first = text[start:]
+	} else {
+		first = text[start : start+end]
+	}
+	return strings.TrimSpace(first)
 }

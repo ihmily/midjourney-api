@@ -10,6 +10,7 @@ Midjourney 的非官方 API 服务，通过 Discord Bot 与 Midjourney 交互，
 - **任务操作**：支持 Upscale、Zoom Out 等图片后处理操作
 - **多账户管理**：支持配置多个 Discord 账户，实现并发处理与负载均衡
 - **任务队列**：基于 Redis 的异步任务队列，支持多 Worker 并发消费
+- **任务回调**：支持任务状态变更回调，包含进度
 - **对象存储**：图片生成后自动上传至阿里云 OSS 或 AWS S3
 - **Swagger 文档**：内置 API 文档，访问 `/swagger/index.html` 即可查看
 
@@ -83,7 +84,7 @@ docker-compose up -d
 
 ```bash
 # 1. 安装依赖
-go mod download
+go mod download && go mod tidy
 
 # 2. 启动依赖服务（PostgreSQL + Redis）
 docker-compose up -d postgres redis
@@ -209,8 +210,9 @@ flowchart TB
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `POST` | `/api/v1/tasks/imagine` | 创建图片生成任务 |
-| `POST` | `/api/v1/tasks/action` | 执行任务操作（Upscale/Zoom Out 等） |
+| `POST` | `/api/v1/tasks/imagine` | 创建图片生成任务，支持 `callback_url` |
+| `POST` | `/api/v1/tasks/describe` | 创建图片描述任务，支持 `callback_url` |
+| `POST` | `/api/v1/tasks/action` | 执行任务操作（Upscale/Zoom Out 等），支持 `callback_url` |
 | `GET` | `/api/v1/tasks/:task_id` | 查询任务详情 |
 | `GET` | `/api/v1/tasks` | 获取任务列表 |
 | `GET` | `/api/v1/tasks/queue` | 获取等待队列 |
@@ -246,7 +248,7 @@ flowchart TB
 ```bash
 curl 'http://localhost:8080/api/v1/tasks/imagine' \
   -H 'Content-Type: application/json' \
-  --data-raw $'{\n  "prompt": "a cute cat"\n}'
+  --data-raw $'{\n  "prompt": "a cute cat",\n  "callback_url": ""\n}'
 ```
 
 **查询任务状态**
@@ -255,12 +257,24 @@ curl 'http://localhost:8080/api/v1/tasks/imagine' \
 curl http://localhost:8080/api/v1/tasks/{task_id}
 ```
 
+任务状态说明：
+
+| 状态 | 说明 |
+|------|------|
+| `PENDING` | 任务已创建，等待进入队列 |
+| `SUBMITTED` | 已提交至 Discord，等待响应 |
+| `IN_QUEUE` | Discord 已接收，排队等待处理 |
+| `PROCESSING` | 正在生成图片（`progress` 字段表示进度0~100） |
+| `SUCCESS` | 任务完成，`image_url` / `oss_image_url` 可访问 |
+| `FAILED` | 任务失败，`error_message` 字段包含失败原因 |
+| `TIMEOUT` | 任务超时 |
+
 **执行 Upscale 操作**
 
 ```bash
 curl 'http://localhost:8080/api/v1/tasks/action' \
   -H 'Content-Type: application/json' \
-  --data-raw $'{\n  "action_type": "upscale",\n  "index": 4,\n  "task_id": "xxx"\n}'
+  --data-raw $'{\n  "action_type": "upscale",\n  "index": 1,\n  "task_id": "xxx"\n}'
 ```
 
 ## Swagger 文档
