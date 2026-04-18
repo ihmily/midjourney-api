@@ -128,7 +128,7 @@ discord:
   imagine_command_version: "1237876415471554623"
   accounts:
     - name: "account1"
-      bot_token: "YOUR_BOT_TOKEN"
+      bot_token: "YOUR_USER_TOKEN"
       user_token: "YOUR_USER_TOKEN"
       guild_id: "YOUR_GUILD_ID"
       channel_id: "YOUR_CHANNEL_ID"
@@ -145,13 +145,7 @@ oss:
 
 ### 获取 Discord Token
 
-1. 前往 [Discord Developer Portal](https://discord.com/developers/applications) 创建 Bot
-2. 将 Bot 邀请至已加入 Midjourney 的服务器
-3. 复制 Bot Token 填入 `bot_token`
-4. 右键服务器图标 → 复制服务器 ID 填入 `guild_id`
-5. 右键目标频道 → 复制频道 ID 填入 `channel_id`
-
-> **注意**：需要在 Discord Developer Portal 开启 `MESSAGE CONTENT INTENT` 权限
+请参考 [DOC_ZH.md](./DOC_ZH.md) 获取详细步骤说明。
 
 ## 使用流程
 

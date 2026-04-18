@@ -128,7 +128,7 @@ discord:
   imagine_command_version: "1237876415471554623"
   accounts:
     - name: "account1"
-      bot_token: "YOUR_BOT_TOKEN"
+      bot_token: "YOUR_USER_TOKEN"
       user_token: "YOUR_USER_TOKEN"
       guild_id: "YOUR_GUILD_ID"
       channel_id: "YOUR_CHANNEL_ID"
@@ -145,13 +145,7 @@ oss:
 
 ### Getting a Discord Token
 
-1. Go to [Discord Developer Portal](https://discord.com/developers/applications) and create a Bot
-2. Invite the Bot to a server that has joined Midjourney
-3. Copy the Bot Token and fill in `bot_token`
-4. Right-click the server icon → Copy Server ID → fill in `guild_id`
-5. Right-click the target channel → Copy Channel ID → fill in `channel_id`
-
-> **Note**: You must enable `MESSAGE CONTENT INTENT` in the Discord Developer Portal.
+Please refer to [DOC.md](./DOC.md) for detailed step-by-step instructions.
 
 ## Workflow
 
