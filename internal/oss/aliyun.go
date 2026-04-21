@@ -19,11 +19,13 @@ type aliyunUploader struct {
 
 func newAliyunUploader(cfg *appconfig.AliyunOSSConfig, logger *zap.Logger) (Uploader, error) {
 	opts := []alioss.ClientOption{}
-	if cfg.IsCname {
+	endpoint := cfg.Endpoint
+	if cfg.IsCname && cfg.CnameDomain != "" {
 		opts = append(opts, alioss.UseCname(true))
+		endpoint = cfg.CnameDomain
 	}
 
-	client, err := alioss.New(cfg.Endpoint, cfg.AccessKeyID, cfg.AccessKeySecret, opts...)
+	client, err := alioss.New(endpoint, cfg.AccessKeyID, cfg.AccessKeySecret, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Aliyun OSS client: %w", err)
 	}
