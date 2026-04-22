@@ -40,15 +40,13 @@ type CreateAccountRequest struct {
 	GuildID         string `json:"guild_id" binding:"required"`
 	ChannelID       string `json:"channel_id" binding:"required"`
 	UserToken       string `json:"user_token" binding:"required"`
-	BotToken        string `json:"bot_token"`
-	ConcurrentLimit int    `json:"concurrent_limit" binding:"min=1,max=10"`
+	ConcurrentLimit int    `json:"concurrent_limit"`
 }
 
 type UpdateAccountRequest struct {
 	GuildID         string              `json:"guild_id"`
 	ChannelID       string              `json:"channel_id"`
 	UserToken       string              `json:"user_token"`
-	BotToken        string              `json:"bot_token"`
 	Status          model.AccountStatus `json:"status"`
 	Health          model.AccountHealth `json:"health"`
 	ConcurrentLimit int                 `json:"concurrent_limit" binding:"min=1,max=10"`
@@ -56,13 +54,17 @@ type UpdateAccountRequest struct {
 
 func (s *accountService) CreateAccount(ctx context.Context, req *CreateAccountRequest) (*model.Account, error) {
 	account := &model.Account{
-		GuildID:         req.GuildID,
-		ChannelID:       req.ChannelID,
-		UserToken:       req.UserToken,
-		BotToken:        req.BotToken,
-		ConcurrentLimit: req.ConcurrentLimit,
-		Status:          model.AccountStatusActive,
-		CurrentJobs:     0,
+		GuildID:   req.GuildID,
+		ChannelID: req.ChannelID,
+		UserToken: req.UserToken,
+		ConcurrentLimit: func() int {
+			if req.ConcurrentLimit <= 0 {
+				return constants.DefaultConcurrentLimit
+			}
+			return req.ConcurrentLimit
+		}(),
+		Status:      model.AccountStatusActive,
+		CurrentJobs: 0,
 	}
 
 	err := s.accountRepo.Create(ctx, account)
@@ -98,9 +100,6 @@ func (s *accountService) UpdateAccount(ctx context.Context, id uint, req *Update
 	}
 	if req.UserToken != "" {
 		account.UserToken = req.UserToken
-	}
-	if req.BotToken != "" {
-		account.BotToken = req.BotToken
 	}
 	if req.Status != "" {
 		account.Status = req.Status

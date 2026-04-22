@@ -41,22 +41,13 @@ type RedisConfig struct {
 	PoolSize int    `mapstructure:"pool_size"`
 }
 
-type DiscordAccount struct {
-	Name      string `mapstructure:"name"`
-	BotToken  string `mapstructure:"bot_token"`
-	UserToken string `mapstructure:"user_token"`
-	GuildID   string `mapstructure:"guild_id"`
-	ChannelID string `mapstructure:"channel_id"`
-}
-
 type DiscordConfig struct {
-	ApplicationID          string           `mapstructure:"application_id"`
-	ImagineCommandID       string           `mapstructure:"imagine_command_id"`
-	ImagineCommandVersion  string           `mapstructure:"imagine_command_version"`
-	DescribeCommandID      string           `mapstructure:"describe_command_id"`
-	DescribeCommandVersion string           `mapstructure:"describe_command_version"`
-	APIBaseURL             string           `mapstructure:"api_base_url"`
-	Accounts               []DiscordAccount `mapstructure:"accounts"`
+	ApplicationID          string `mapstructure:"application_id"`
+	ImagineCommandID       string `mapstructure:"imagine_command_id"`
+	ImagineCommandVersion  string `mapstructure:"imagine_command_version"`
+	DescribeCommandID      string `mapstructure:"describe_command_id"`
+	DescribeCommandVersion string `mapstructure:"describe_command_version"`
+	APIBaseURL             string `mapstructure:"api_base_url"`
 }
 
 type TaskConfig struct {
@@ -162,22 +153,6 @@ func (c *Config) Validate() error {
 	if c.Discord.ImagineCommandID == "" {
 		return fmt.Errorf("discord imagine_command_id is required")
 	}
-	if len(c.Discord.Accounts) == 0 {
-		return fmt.Errorf("at least one discord account is required")
-	}
-
-	for i, acc := range c.Discord.Accounts {
-		if acc.GuildID == "" {
-			return fmt.Errorf("discord account[%d] guild_id is required", i)
-		}
-		if acc.ChannelID == "" {
-			return fmt.Errorf("discord account[%d] channel_id is required", i)
-		}
-		if acc.UserToken == "" {
-			return fmt.Errorf("discord account[%d] user_token is required", i)
-		}
-	}
-
 	if c.Task.QueueName == "" {
 		return fmt.Errorf("task queue_name is required")
 	}

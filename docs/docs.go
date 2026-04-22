@@ -48,25 +48,28 @@ const docTemplate = `{
                         }
                     }
                 }
-            }
-        },
-        "/api/v1/accounts/{id}/health": {
-            "get": {
-                "description": "Check the health status of the specified account",
+            },
+            "post": {
+                "description": "Create a new Discord account and start its listener",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Account"
                 ],
-                "summary": "Check account health",
+                "summary": "Create account",
                 "parameters": [
                     {
-                        "type": "integer",
-                        "description": "Account ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
+                        "description": "Account info",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/service.CreateAccountRequest"
+                        }
                     }
                 ],
                 "responses": {
@@ -82,12 +85,6 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.Response"
                         }
                     },
-                    "404": {
-                        "description": "Account not found",
-                        "schema": {
-                            "$ref": "#/definitions/response.Response"
-                        }
-                    },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
@@ -95,16 +92,18 @@ const docTemplate = `{
                         }
                     }
                 }
-            },
-            "put": {
-                "description": "Manually update the health status of the specified account",
+            }
+        },
+        "/api/v1/accounts/{id}": {
+            "delete": {
+                "description": "Delete the specified account and stop its listener",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Account"
                 ],
-                "summary": "Update account health",
+                "summary": "Delete account",
                 "parameters": [
                     {
                         "type": "integer",
@@ -112,15 +111,6 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "description": "Update request",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/handler.UpdateAccountHealthRequest"
-                        }
                     }
                 ],
                 "responses": {
@@ -442,14 +432,6 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.UpdateAccountHealthRequest": {
-            "type": "object",
-            "properties": {
-                "health": {
-                    "type": "string"
-                }
-            }
-        },
         "response.Response": {
             "type": "object",
             "properties": {
@@ -461,6 +443,28 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "service.CreateAccountRequest": {
+            "type": "object",
+            "required": [
+                "channel_id",
+                "guild_id",
+                "user_token"
+            ],
+            "properties": {
+                "channel_id": {
+                    "type": "string"
+                },
+                "concurrent_limit": {
+                    "type": "integer"
+                },
+                "guild_id": {
+                    "type": "string"
+                },
+                "user_token": {
                     "type": "string"
                 }
             }

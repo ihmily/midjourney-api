@@ -36,9 +36,9 @@ func Setup(r *gin.Engine, taskHandler *handler.TaskHandler, accountHandler *hand
 		// Account related
 		accounts := v1.Group("/accounts")
 		{
+			accounts.POST("", accountHandler.CreateAccount)
 			accounts.GET("", accountHandler.ListAccounts)
-			accounts.GET("/:id/health", accountHandler.HealthCheckAccount)
-			accounts.PUT("/:id/health", accountHandler.UpdateAccountHealth)
+			accounts.DELETE("/:id", accountHandler.DeleteAccount)
 		}
 	}
 }

@@ -28,7 +28,6 @@ type Account struct {
 	GuildID         string         `gorm:"size:64;not null" json:"guild_id"`
 	ChannelID       string         `gorm:"size:64;not null" json:"channel_id"`
 	UserToken       string         `gorm:"size:512;not null" json:"user_token"`
-	BotToken        string         `gorm:"size:512" json:"bot_token,omitempty"`
 	Status          AccountStatus  `gorm:"size:32;default:'ACTIVE'" json:"status"`
 	Health          AccountHealth  `gorm:"size:32;default:'UNKNOWN'" json:"health"`
 	ConcurrentLimit int            `gorm:"default:3" json:"concurrent_limit"`

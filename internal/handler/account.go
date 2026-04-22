@@ -10,18 +10,88 @@ import (
 	"github.com/trae/midjourney-api/pkg/response"
 )
 
-type UpdateAccountHealthRequest struct {
-	Health string `json:"health"`
+// ListenerManager manages Discord listener lifecycle for accounts.
+type ListenerManager interface {
+	StartAccountListener(account *model.Account) error
+	StopAccountListener(accountID uint) error
 }
 
 type AccountHandler struct {
-	accountService service.AccountService
+	accountService  service.AccountService
+	listenerManager ListenerManager
 }
 
-func NewAccountHandler(accountService service.AccountService) *AccountHandler {
+func NewAccountHandler(accountService service.AccountService, listenerManager ListenerManager) *AccountHandler {
 	return &AccountHandler{
-		accountService: accountService,
+		accountService:  accountService,
+		listenerManager: listenerManager,
 	}
+}
+
+// CreateAccount creates a new account and starts its Discord listener
+// @Summary Create account
+// @Description Create a new Discord account and start its listener
+// @Tags Account
+// @Accept json
+// @Produce json
+// @Param request body service.CreateAccountRequest true "Account info"
+// @Success 200 {object} response.Response "Success"
+// @Failure 400 {object} response.Response "Bad request"
+// @Failure 500 {object} response.Response "Internal server error"
+// @Router /api/v1/accounts [post]
+func (h *AccountHandler) CreateAccount(c *gin.Context) {
+	var req service.CreateAccountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	ctx := context.Background()
+	account, err := h.accountService.CreateAccount(ctx, &req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	// Start listener asynchronously (takes time to connect)
+	go func() {
+		if err := h.listenerManager.StartAccountListener(account); err != nil {
+			// Health will be updated to UNHEALTHY inside StartAccountListener on failure
+			_ = err
+		}
+	}()
+
+	response.Success(c, account)
+}
+
+// DeleteAccount deletes an account and stops its Discord listener
+// @Summary Delete account
+// @Description Delete the specified account and stop its listener
+// @Tags Account
+// @Param id path int true "Account ID"
+// @Produce json
+// @Success 200 {object} response.Response "Success"
+// @Failure 400 {object} response.Response "Bad request"
+// @Failure 404 {object} response.Response "Account not found"
+// @Failure 500 {object} response.Response "Internal server error"
+// @Router /api/v1/accounts/{id} [delete]
+func (h *AccountHandler) DeleteAccount(c *gin.Context) {
+	id, err := getUintParam(c, "id")
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	// Stop listener first (ignore error, still proceed with deletion)
+	_ = h.listenerManager.StopAccountListener(id)
+
+	ctx := context.Background()
+	if err := h.accountService.DeleteAccount(ctx, id); err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, nil)
 }
 
 // ListAccounts returns the list of all accounts
@@ -51,79 +121,4 @@ func getUintParam(c *gin.Context, param string) (uint, error) {
 		return 0, err
 	}
 	return uint(val), nil
-}
-
-// HealthCheckAccount checks the health status of a specific account
-// @Summary Check account health
-// @Description Check the health status of the specified account
-// @Tags Account
-// @Param id path int true "Account ID"
-// @Produce json
-// @Success 200 {object} response.Response "Success"
-// @Failure 400 {object} response.Response "Bad request"
-// @Failure 404 {object} response.Response "Account not found"
-// @Failure 500 {object} response.Response "Internal server error"
-// @Router /api/v1/accounts/{id}/health [get]
-func (h *AccountHandler) HealthCheckAccount(c *gin.Context) {
-	ctx := context.Background()
-	id, err := getUintParam(c, "id")
-	if err != nil {
-		response.Error(c, err)
-		return
-	}
-
-	account, err := h.accountService.GetAccountByID(ctx, id)
-	if err != nil {
-		response.Error(c, err)
-		return
-	}
-
-	isHealthy, reason := h.accountService.CheckAccountHealth(account)
-
-	response.Success(c, map[string]interface{}{
-		"account_id": id,
-		"is_healthy": isHealthy,
-		"reason":     reason,
-		"account":    account,
-	})
-}
-
-// UpdateAccountHealth updates the health status of a specific account
-// @Summary Update account health
-// @Description Manually update the health status of the specified account
-// @Tags Account
-// @Param id path int true "Account ID"
-// @Param request body UpdateAccountHealthRequest true "Update request"
-// @Produce json
-// @Success 200 {object} response.Response "Success"
-// @Failure 400 {object} response.Response "Bad request"
-// @Failure 404 {object} response.Response "Account not found"
-// @Failure 500 {object} response.Response "Internal server error"
-// @Router /api/v1/accounts/{id}/health [put]
-func (h *AccountHandler) UpdateAccountHealth(c *gin.Context) {
-	ctx := context.Background()
-	id, err := getUintParam(c, "id")
-	if err != nil {
-		response.Error(c, err)
-		return
-	}
-
-	var req UpdateAccountHealthRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, err)
-		return
-	}
-
-	if err := h.accountService.UpdateAccountHealth(ctx, id, model.AccountHealth(req.Health), "manual update"); err != nil {
-		response.Error(c, err)
-		return
-	}
-
-	updated, err := h.accountService.GetAccountByID(ctx, id)
-	if err != nil {
-		response.Error(c, err)
-		return
-	}
-
-	response.Success(c, updated)
 }

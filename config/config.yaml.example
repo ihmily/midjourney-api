@@ -27,19 +27,6 @@ discord:
   imagine_command_version: "1237876415471554623"
   api_base_url: "https://discord.com/api/v9"
   
-  # Configure multiple Discord account listeners
-  accounts:
-    - name: "account1"
-      bot_token: "MTIxxxx"
-      user_token: "MTIxxxx"
-      guild_id: ""
-      channel_id: ""
-    - name: "account2"
-      bot_token: "MTIxxxx"
-      user_token: "MTIxxxx"
-      guild_id: ""
-      channel_id: ""
-
 task:
   timeout: 300 #
   max_retries: 3

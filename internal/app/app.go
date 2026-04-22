@@ -2,11 +2,11 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -62,6 +62,9 @@ type Application struct {
 
 	// HTTP Server
 	HTTPServer *http.Server
+
+	// Listeners mutex
+	listenersMu sync.RWMutex
 }
 
 func New(configPath string) (*Application, error) {
@@ -118,10 +121,8 @@ func New(configPath string) (*Application, error) {
 	}
 
 	app.TaskHandler = handler.NewTaskHandler(app.TaskService)
-	app.AccountHandler = handler.NewAccountHandler(app.AccountService)
+	app.AccountHandler = handler.NewAccountHandler(app.AccountService, app)
 	app.HealthHandler = handler.NewHealthHandler()
-
-	app.loadAccounts()
 
 	go app.initListeners()
 
@@ -171,60 +172,6 @@ func (app *Application) initDatabase() (*gorm.DB, error) {
 	return db, nil
 }
 
-func (app *Application) loadAccounts() {
-	ctx := context.Background()
-	app.Logger.Info("Loading accounts from configuration file...")
-
-	for _, accountConfig := range app.Config.Discord.Accounts {
-		existingAccount, err := app.AccountRepo.GetByGuildAndChannel(
-			ctx,
-			accountConfig.GuildID,
-			accountConfig.ChannelID,
-		)
-
-		if err == nil && existingAccount != nil {
-			existingAccount.UserToken = accountConfig.UserToken
-			existingAccount.BotToken = accountConfig.BotToken
-			if err := app.AccountRepo.Update(ctx, existingAccount); err != nil {
-				app.Logger.Warn("Failed to update account",
-					zap.String("guild_id", accountConfig.GuildID),
-					zap.Error(err))
-			} else {
-				app.Logger.Info("Account updated",
-					zap.Uint("id", existingAccount.ID),
-					zap.String("guild_id", accountConfig.GuildID))
-			}
-			continue
-		}
-
-		// Create new account
-		account := &model.Account{
-			GuildID:         accountConfig.GuildID,
-			ChannelID:       accountConfig.ChannelID,
-			UserToken:       accountConfig.UserToken,
-			BotToken:        accountConfig.BotToken,
-			ConcurrentLimit: constants.DefaultConcurrentLimit,
-			Status:          model.AccountStatusActive,
-			Health:          model.AccountHealthUnknown,
-			CurrentJobs:     0,
-		}
-
-		if err := app.AccountRepo.Create(ctx, account); err != nil {
-			app.Logger.Warn("Failed to create account",
-				zap.String("guild_id", accountConfig.GuildID),
-				zap.Error(err))
-			continue
-		}
-
-		app.Logger.Info("Account created",
-			zap.Uint("id", account.ID),
-			zap.String("guild_id", accountConfig.GuildID))
-	}
-
-	totalAccounts := len(app.Config.Discord.Accounts)
-	app.Logger.Info("Total accounts configured", zap.Int("count", totalAccounts))
-}
-
 func (app *Application) initListeners() {
 	ctx := context.Background()
 
@@ -234,96 +181,116 @@ func (app *Application) initListeners() {
 		return
 	}
 
+	app.listenersMu.Lock()
 	app.Listeners = make(map[uint]*discord.Listener)
-
-	type accountInfo struct {
-		Name    string `json:"name"`
-		GuildID string `json:"guild_id"`
-	}
-	type botInfo struct {
-		Username string `json:"username"`
-		UserID   string `json:"user_id"`
-	}
-
-	listenedList := make([]accountInfo, 0)
-	unlistenedList := make([]accountInfo, 0)
-
-	getAccountName := func(guildID, channelID string) string {
-		for _, cfgAcc := range app.Config.Discord.Accounts {
-			if cfgAcc.GuildID == guildID && cfgAcc.ChannelID == channelID {
-				return cfgAcc.Name
-			}
-		}
-		return ""
-	}
+	app.listenersMu.Unlock()
 
 	for _, acc := range accounts {
-		name := getAccountName(acc.GuildID, acc.ChannelID)
-		info := accountInfo{Name: name, GuildID: acc.GuildID}
-
-		if acc.BotToken == "" {
-			app.Logger.Warn("Account missing BotToken, skipping listener creation",
+		if acc.UserToken == "" {
+			app.Logger.Warn("Account missing UserToken, skipping listener",
 				zap.Uint("id", acc.ID),
 				zap.String("guild_id", acc.GuildID))
-			unlistenedList = append(unlistenedList, info)
 			continue
 		}
 
-		listener := discord.NewListener(acc.BotToken, app.Config.Discord.ApplicationID, app.DB, app.Logger, app.OSSUploader)
+		listener := discord.NewListener(acc.UserToken, app.Config.Discord.ApplicationID, app.DB, app.Logger, app.OSSUploader)
 		if listener == nil {
-			app.Logger.Error("Failed to create listener",
-				zap.Uint("id", acc.ID),
-				zap.String("guild_id", acc.GuildID))
-			unlistenedList = append(unlistenedList, info)
+			app.Logger.Error("Failed to create listener", zap.Uint("id", acc.ID))
 			app.AccountService.UpdateAccountHealth(ctx, acc.ID, model.AccountHealthUnhealthy, "Failed to create listener")
 			continue
 		}
 
 		if err := listener.Start(); err != nil {
-			app.Logger.Error("Failed to start listener",
-				zap.Uint("id", acc.ID),
-				zap.String("guild_id", acc.GuildID),
-				zap.Error(err))
-			unlistenedList = append(unlistenedList, info)
+			app.Logger.Error("Failed to start listener", zap.Uint("id", acc.ID), zap.Error(err))
 			app.AccountService.UpdateAccountHealth(ctx, acc.ID, model.AccountHealthUnhealthy, "Failed to start listener: "+err.Error())
 			continue
 		}
 
+		app.listenersMu.Lock()
 		app.Listeners[acc.ID] = listener
-		listenedList = append(listenedList, info)
+		app.listenersMu.Unlock()
+		app.Logger.Info("Listener started", zap.Uint("id", acc.ID), zap.String("guild_id", acc.GuildID))
 	}
 
-	if len(app.Listeners) > 0 {
+	app.listenersMu.RLock()
+	listenerCount := len(app.Listeners)
+	app.listenersMu.RUnlock()
+
+	if listenerCount > 0 {
 		time.Sleep(constants.ListenerStartupWait)
 	}
 
-	// Check listener bot info and update account health status
-	startedBots := make([]botInfo, 0)
+	app.listenersMu.RLock()
+	defer app.listenersMu.RUnlock()
 	for accountID, listener := range app.Listeners {
 		username, userID := listener.GetBotInfo()
 		if username != "" && userID != "" {
 			if err := app.AccountService.UpdateAccountHealth(ctx, accountID, model.AccountHealthHealthy, ""); err != nil {
-				app.Logger.Error("Failed to update account health",
-					zap.Uint("id", accountID),
-					zap.Error(err))
+				app.Logger.Error("Failed to update account health", zap.Uint("id", accountID), zap.Error(err))
 			}
-			startedBots = append(startedBots, botInfo{Username: username, UserID: userID})
+			app.Logger.Info("Bot connected", zap.String("username", username), zap.String("user_id", userID))
 		} else {
-			app.Logger.Warn("Listener connected but failed to get bot info, possible invalid token",
-				zap.Uint("id", accountID))
+			app.Logger.Warn("Listener connected but failed to get bot info", zap.Uint("id", accountID))
 			app.AccountService.UpdateAccountHealth(ctx, accountID, model.AccountHealthUnhealthy, "Failed to get bot info")
 		}
 	}
+}
 
-	listenedJSON, _ := json.Marshal(listenedList)
-	unlistenedJSON, _ := json.Marshal(unlistenedList)
-	startedJSON, _ := json.Marshal(startedBots)
-
-	app.Logger.Info("Listened accounts: " + string(listenedJSON))
-	app.Logger.Info("Unlistened accounts: " + string(unlistenedJSON))
-	if len(startedBots) > 0 {
-		app.Logger.Info("Started bots: " + string(startedJSON))
+// StartAccountListener starts a Discord listener for the given account.
+// Implements handler.ListenerManager interface.
+func (app *Application) StartAccountListener(account *model.Account) error {
+	if account.UserToken == "" {
+		return fmt.Errorf("account missing user_token")
 	}
+
+	listener := discord.NewListener(account.UserToken, app.Config.Discord.ApplicationID, app.DB, app.Logger, app.OSSUploader)
+	if listener == nil {
+		return fmt.Errorf("failed to create Discord listener")
+	}
+
+	if err := listener.Start(); err != nil {
+		return fmt.Errorf("failed to start Discord listener: %w", err)
+	}
+
+	app.listenersMu.Lock()
+	if app.Listeners == nil {
+		app.Listeners = make(map[uint]*discord.Listener)
+	}
+	app.Listeners[account.ID] = listener
+	app.listenersMu.Unlock()
+
+	// Wait briefly then check health
+	time.Sleep(constants.ListenerStartupWait)
+	ctx := context.Background()
+	username, userID := listener.GetBotInfo()
+	if username != "" && userID != "" {
+		app.Logger.Info("Bot connected",
+			zap.Uint("account_id", account.ID),
+			zap.String("username", username),
+			zap.String("user_id", userID))
+		app.AccountService.UpdateAccountHealth(ctx, account.ID, model.AccountHealthHealthy, "")
+	} else {
+		app.Logger.Warn("Listener started but failed to get bot info", zap.Uint("account_id", account.ID))
+		app.AccountService.UpdateAccountHealth(ctx, account.ID, model.AccountHealthUnhealthy, "Failed to get bot info")
+	}
+
+	return nil
+}
+
+// StopAccountListener stops and removes the Discord listener for the given account ID.
+// Implements handler.ListenerManager interface.
+func (app *Application) StopAccountListener(accountID uint) error {
+	app.listenersMu.Lock()
+	defer app.listenersMu.Unlock()
+
+	listener, ok := app.Listeners[accountID]
+	if !ok {
+		return nil
+	}
+
+	err := listener.Stop()
+	delete(app.Listeners, accountID)
+	return err
 }
 
 func (app *Application) setupRouter() *gin.Engine {
@@ -402,11 +369,13 @@ func (app *Application) gracefulShutdown() {
 	}
 
 	// Stop all Discord listeners
+	app.listenersMu.Lock()
 	for accountID, listener := range app.Listeners {
 		if err := listener.Stop(); err != nil {
 			app.Logger.Error("Failed to stop listener", zap.Uint("id", accountID), zap.Error(err))
 		}
 	}
+	app.listenersMu.Unlock()
 
 	// Close database connection
 	if app.DB != nil {
