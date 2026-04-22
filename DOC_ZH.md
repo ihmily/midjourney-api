@@ -67,7 +67,6 @@
 至此，程序运行所需要的server ID、channel ID、User Token都已经获取得到。
 
 ```
-bot_token: "User Token"
 user_token: "User Token"
 guild_id: "server ID"
 channel_id: "channel ID"

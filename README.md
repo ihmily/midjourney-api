@@ -123,15 +123,12 @@ redis:
   port: 6379
 
 discord:
-  application_id: "936929561302675456"   # Midjourney Bot application ID (fixed)
+  application_id: "936929561302675456"
   imagine_command_id: "938956540159881230"
   imagine_command_version: "1237876415471554623"
-  accounts:
-    - name: "account1"
-      bot_token: "YOUR_USER_TOKEN"
-      user_token: "YOUR_USER_TOKEN"
-      guild_id: "YOUR_GUILD_ID"
-      channel_id: "YOUR_CHANNEL_ID"
+  describe_command_id: "1092492867185950852"
+  describe_command_version: "1493662068505706617"
+  api_base_url: "https://discord.com/api/v9"
 
 task:
   timeout: 300       # Task timeout in seconds
@@ -142,10 +139,6 @@ oss:
   enable: false      # Enable OSS upload
   provider: aliyun   # s3 / aliyun
 ```
-
-### Getting a Discord Token
-
-Please refer to [DOC.md](./DOC.md) for detailed step-by-step instructions.
 
 ## Workflow
 
@@ -211,11 +204,15 @@ Supported `action_type` values for `/api/v1/tasks/action`:
 
 ### Account Management
 
+Midjourney Accounts are managed dynamically via API.
+
 | Method | Path | Description |
 |--------|------|-------------|
+| `POST` | `/api/v1/accounts` | Add an account and start its Discord listener |
 | `GET` | `/api/v1/accounts` | List all accounts |
-| `GET` | `/api/v1/accounts/:id/health` | Get account health status |
-| `PUT` | `/api/v1/accounts/:id/health` | Update account health status |
+| `DELETE` | `/api/v1/accounts/:id` | Delete an account and stop its listener |
+
+For how to obtain the `user_token`, `guild_id`, and `channel_id` required when adding an account, please refer to [DOC.md](./DOC.md).
 
 ### Health Check
 

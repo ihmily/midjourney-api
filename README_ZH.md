@@ -123,15 +123,13 @@ redis:
   port: 6379
 
 discord:
-  application_id: "936929561302675456"   # Midjourney Bot 应用 ID（固定值）
+  # Midjourney Bot 应用固定值
+  application_id: "936929561302675456"
   imagine_command_id: "938956540159881230"
   imagine_command_version: "1237876415471554623"
-  accounts:
-    - name: "account1"
-      bot_token: "YOUR_USER_TOKEN"
-      user_token: "YOUR_USER_TOKEN"
-      guild_id: "YOUR_GUILD_ID"
-      channel_id: "YOUR_CHANNEL_ID"
+  describe_command_id: "1092492867185950852"
+  describe_command_version: "1493662068505706617"
+  api_base_url: "https://discord.com/api/v9"
 
 task:
   timeout: 300       # 任务超时时间（秒）
@@ -142,10 +140,6 @@ oss:
   enable: false      # 是否启用 OSS 上传
   provider: aliyun   # s3 / aliyun
 ```
-
-### 获取 Discord Token
-
-请参考 [DOC_ZH.md](./DOC_ZH.md) 获取详细步骤说明。
 
 ## 使用流程
 
@@ -223,11 +217,15 @@ flowchart TB
 
 ### 账户管理
 
+Midjourney 账户通过 API 动态管理。
+
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| `POST` | `/api/v1/accounts` | 新增账户并启动 Discord 监听 |
 | `GET` | `/api/v1/accounts` | 获取账户列表 |
-| `GET` | `/api/v1/accounts/:id/health` | 查询账户健康状态 |
-| `PUT` | `/api/v1/accounts/:id/health` | 更新账户健康状态 |
+| `DELETE` | `/api/v1/accounts/:id` | 删除账户并停止监听 |
+
+新增账户所需的 `user_token`、`guild_id`、`channel_id` 获取方式请参考 [DOC_ZH.md](./DOC_ZH.md)。
 
 ### 健康检查
 

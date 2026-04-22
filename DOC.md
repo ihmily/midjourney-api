@@ -67,7 +67,6 @@
 At this point, the server ID, channel ID, and User Token required to run the program have all been obtained.
 
 ```
-bot_token: "User Token"
 user_token: "User Token"
 guild_id: "server ID"
 channel_id: "channel ID"
