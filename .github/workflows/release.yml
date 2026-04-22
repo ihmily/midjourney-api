@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build-and-release:
-    name: Build Linux & Release
+    name: Build & Release
     runs-on: ubuntu-latest
 
     steps:
@@ -24,7 +24,7 @@ jobs:
           cache: true
 
       - name: Download dependencies
-        run: go mod download
+        run: go mod download && go mod tidy
 
       - name: Generate Swagger docs
         run: |
@@ -52,12 +52,34 @@ jobs:
             -o dist/midjourney-api-linux-arm64 \
             ./cmd/server
 
+      - name: Build Windows amd64
+        env:
+          CGO_ENABLED: 0
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
+            -o dist/midjourney-api-windows-amd64.exe \
+            ./cmd/server
+
+      - name: Build Windows arm64
+        env:
+          CGO_ENABLED: 0
+          GOOS: windows
+          GOARCH: arm64
+        run: |
+          go build -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
+            -o dist/midjourney-api-windows-arm64.exe \
+            ./cmd/server
+
       - name: Package with config template
         run: |
-          cp config/config.yaml.example dist/config.yaml.example
+          cp -r config dist/
           cd dist
-          tar -czf midjourney-api-linux-amd64.tar.gz midjourney-api-linux-amd64 config.yaml.example
-          tar -czf midjourney-api-linux-arm64.tar.gz midjourney-api-linux-arm64 config.yaml.example
+          tar -czf midjourney-api-linux-amd64.tar.gz midjourney-api-linux-amd64 config
+          tar -czf midjourney-api-linux-arm64.tar.gz midjourney-api-linux-arm64 config
+          zip -r midjourney-api-windows-amd64.zip midjourney-api-windows-amd64.exe config
+          zip -r midjourney-api-windows-arm64.zip midjourney-api-windows-arm64.exe config
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -68,3 +90,5 @@ jobs:
           files: |
             dist/midjourney-api-linux-amd64.tar.gz
             dist/midjourney-api-linux-arm64.tar.gz
+            dist/midjourney-api-windows-amd64.zip
+            dist/midjourney-api-windows-arm64.zip
