@@ -745,7 +745,10 @@ const docTemplate = `{
                 },
                 "index": {
                     "description": "Index: 1-4",
-                    "type": "integer"
+                    "type": "integer",
+                    "maximum": 4,
+                    "minimum": 1,
+                    "example": 1
                 },
                 "task_id": {
                     "description": "Original task ID",

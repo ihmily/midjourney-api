@@ -340,9 +340,9 @@ func (h *TaskHandler) PerformTaskAction(c *gin.Context) {
 }
 
 type PerformTaskActionReq struct {
-	TaskID      string `json:"task_id" binding:"required"`     // Original task ID
-	ActionType  string `json:"action_type" binding:"required"` // Operation type
-	Index       *int   `json:"index" binding:"required"`       // Index: 1-4
+	TaskID      string `json:"task_id" binding:"required"`                                   // Original task ID
+	ActionType  string `json:"action_type" binding:"required"`                               // Operation type
+	Index       *int   `json:"index" binding:"required" minimum:"1" maximum:"4" example:"1"` // Index: 1-4
 	CallbackURL string `json:"callback_url"`
 }
 

@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -38,6 +39,79 @@ func TestSetupRoutesQueueBeforeTaskID(t *testing.T) {
 	}
 	if taskService.getTaskCalled {
 		t.Fatal("task detail handler should not handle /api/v1/tasks/queue")
+	}
+}
+
+func TestSwaggerDocUsesRequestHost(t *testing.T) {
+	engine := setupRouterTestEngine()
+
+	req := httptest.NewRequest(http.MethodGet, "http://203.0.113.10:8080/swagger/doc.json", nil)
+	recorder := httptest.NewRecorder()
+
+	engine.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	doc := decodeSwaggerDoc(t, recorder.Body.Bytes())
+	if got := doc["host"]; got != "203.0.113.10:8080" {
+		t.Fatalf("host = %v, want %q", got, "203.0.113.10:8080")
+	}
+	assertSwaggerSchemes(t, doc, "http")
+}
+
+func TestSwaggerDocUsesForwardedHostAndProto(t *testing.T) {
+	engine := setupRouterTestEngine()
+
+	req := httptest.NewRequest(http.MethodGet, "http://10.0.0.10:8080/swagger/doc.json", nil)
+	req.Header.Set("X-Forwarded-Host", "api.example.com")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	recorder := httptest.NewRecorder()
+
+	engine.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	doc := decodeSwaggerDoc(t, recorder.Body.Bytes())
+	if got := doc["host"]; got != "api.example.com" {
+		t.Fatalf("host = %v, want %q", got, "api.example.com")
+	}
+	assertSwaggerSchemes(t, doc, "https")
+}
+
+func setupRouterTestEngine() *gin.Engine {
+	gin.SetMode(gin.TestMode)
+
+	engine := gin.New()
+	Setup(
+		engine,
+		handler.NewTaskHandler(&fakeRouterTaskService{}),
+		handler.NewAccountHandler(nil, nil),
+		handler.NewHealthHandler(),
+	)
+	return engine
+}
+
+func decodeSwaggerDoc(t *testing.T, body []byte) map[string]any {
+	t.Helper()
+
+	var doc map[string]any
+	if err := json.Unmarshal(body, &doc); err != nil {
+		t.Fatalf("decode swagger doc: %v", err)
+	}
+	return doc
+}
+
+func assertSwaggerSchemes(t *testing.T, doc map[string]any, want string) {
+	t.Helper()
+
+	schemes, ok := doc["schemes"].([]any)
+	if !ok {
+		t.Fatalf("schemes has type %T, want array", doc["schemes"])
+	}
+	if len(schemes) != 1 || schemes[0] != want {
+		t.Fatalf("schemes = %#v, want [%q]", schemes, want)
 	}
 }
 
