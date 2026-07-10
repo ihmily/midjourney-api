@@ -236,13 +236,6 @@ flowchart TB
 ### 账户管理
 
 Midjourney 账户通过 API 动态管理。
-`config.yaml` 只保存全局 Discord 命令配置，不保存账号凭据。
-创建账号时只接受 `guild_id`、`channel_id`、`user_token`。`concurrent_limit` 默认是 `20`，需要调整时通过 `PUT /api/v1/accounts/:id` 更新。账号响应会隐藏 `user_token`。
-`is_disabled` 是管理开关；`is_healthy` 是只读运行时健康状态，由监听检测结果更新。
-账号有活跃任务（`current_jobs > 0`）时，不能删除、禁用，或修改 `guild_id` / `channel_id` / `user_token` 这类会打断监听身份的配置；请等待活跃任务结束。`concurrent_limit` 仍可在任务进行中调整。
-`success_count` 和 `error_count` 统计的是任务最终结果，不是单纯的 Discord 提交次数。
-每个 `guild_id` + `channel_id` 只能绑定一个账号，避免监听匹配产生歧义。
-Redis 任务消息只保存 `account_id`；Worker 处理任务时会从数据库读取最新账号凭据。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -269,8 +262,6 @@ curl 'http://localhost:8080/api/v1/tasks/imagine' \
   -H 'Content-Type: application/json' \
   --data-raw $'{\n  "prompt": "a cute cat",\n  "callback_url": ""\n}'
 ```
-
-`callback_url` 和 `describe.image_url` 必须是 HTTP(S) URL，不能包含 userinfo。运行时出站请求只允许访问公网目标；localhost、私有网络、链路本地地址、CGNAT、文档示例网段、benchmark 网段以及其他 special-use 地址都会被拦截。
 
 **查询任务状态**
 

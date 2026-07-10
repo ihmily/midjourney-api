@@ -222,13 +222,6 @@ Supported `action_type` values for `/api/v1/tasks/action`:
 ### Account Management
 
 Midjourney Accounts are managed dynamically via API.
-`config.yaml` only contains global Discord command settings and does not contain account credentials.
-When creating an account, only `guild_id`, `channel_id`, and `user_token` are accepted. The default `concurrent_limit` is `20`; update it later with `PUT /api/v1/accounts/:id` if needed. Account responses intentionally omit `user_token`.
-`is_disabled` is the administrative switch; `is_healthy` is read-only runtime health and is updated by listener checks.
-Accounts with active tasks (`current_jobs > 0`) cannot be deleted, disabled, or moved to another `guild_id` / `channel_id` / `user_token`; wait for active tasks to finish first. `concurrent_limit` can still be changed while tasks are active.
-`success_count` and `error_count` count terminal task outcomes, not merely Discord submission attempts.
-Each `guild_id` + `channel_id` pair can only have one account to keep listener matching unambiguous.
-Redis task messages only store `account_id`; workers load the latest account credentials from the database when processing.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -255,8 +248,6 @@ curl 'http://localhost:8080/api/v1/tasks/imagine' \
   -H 'Content-Type: application/json' \
   --data-raw $'{\n  "prompt": "a cute cat",\n  "callback_url": ""\n}'
 ```
-
-`callback_url` and `describe.image_url` must be HTTP(S) URLs without userinfo. Runtime outbound requests only allow public destinations; localhost, private networks, link-local ranges, CGNAT, documentation ranges, benchmark ranges, and other special-use addresses are blocked.
 
 **Query task status**
 
