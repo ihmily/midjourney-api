@@ -28,6 +28,7 @@ go.work
 Thumbs.db
 
 # Config
+config/config.yaml
 config/config.local.yaml
 
 # Logs

@@ -38,7 +38,22 @@ const docTemplate = `{
                     "200": {
                         "description": "Success",
                         "schema": {
-                            "$ref": "#/definitions/response.Response"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/handler.AccountView"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "500": {
@@ -50,7 +65,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Create a new Discord account and start its listener",
+                "description": "Create a new Discord account with the default concurrent limit and start its listener. Only guild_id, channel_id, and user_token are accepted.",
                 "consumes": [
                     "application/json"
                 ],
@@ -68,7 +83,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/service.CreateAccountRequest"
+                            "$ref": "#/definitions/handler.CreateAccountReq"
                         }
                     }
                 ],
@@ -76,7 +91,19 @@ const docTemplate = `{
                     "200": {
                         "description": "Success",
                         "schema": {
-                            "$ref": "#/definitions/response.Response"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/handler.AccountView"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "400": {
@@ -95,8 +122,77 @@ const docTemplate = `{
             }
         },
         "/api/v1/accounts/{id}": {
+            "put": {
+                "description": "Update the specified Discord account. At least one field must be provided. is_healthy is read-only and managed by listener checks; use the restart endpoint to re-check an account. While current_jobs is greater than 0, listener-changing fields (guild_id, channel_id, user_token, and disabling the account) are rejected; concurrent_limit can still be changed.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Account"
+                ],
+                "summary": "Update account",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Account ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Account info",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.UpdateAccountReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/handler.AccountView"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "Account not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            },
             "delete": {
-                "description": "Delete the specified account and stop its listener",
+                "description": "Delete the specified account and stop its listener. Accounts with active tasks cannot be deleted until current_jobs is 0.",
                 "produces": [
                     "application/json"
                 ],
@@ -118,6 +214,65 @@ const docTemplate = `{
                         "description": "Success",
                         "schema": {
                             "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "Account not found",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/response.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/accounts/{id}/restart": {
+            "post": {
+                "description": "Restart the specified Discord account listener. is_healthy is managed by the server and will be updated after the listener verifies the account.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Account"
+                ],
+                "summary": "Restart account listener",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Account ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/handler.AccountView"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "400": {
@@ -171,6 +326,24 @@ const docTemplate = `{
                     "200": {
                         "description": "Success",
                         "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/handler.TaskListResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
                             "$ref": "#/definitions/response.Response"
                         }
                     },
@@ -203,7 +376,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/service.TaskActionRequest"
+                            "$ref": "#/definitions/handler.PerformTaskActionReq"
                         }
                     }
                 ],
@@ -211,7 +384,19 @@ const docTemplate = `{
                     "201": {
                         "description": "Action submitted",
                         "schema": {
-                            "$ref": "#/definitions/response.Response"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/service.TaskResponse"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "400": {
@@ -257,7 +442,19 @@ const docTemplate = `{
                     "201": {
                         "description": "Created successfully",
                         "schema": {
-                            "$ref": "#/definitions/response.Response"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/service.TaskResponse"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "400": {
@@ -303,7 +500,19 @@ const docTemplate = `{
                     "201": {
                         "description": "Created successfully",
                         "schema": {
-                            "$ref": "#/definitions/response.Response"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/service.TaskResponse"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "400": {
@@ -335,7 +544,19 @@ const docTemplate = `{
                     "200": {
                         "description": "Success",
                         "schema": {
-                            "$ref": "#/definitions/response.Response"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/service.QueueStatus"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "500": {
@@ -370,7 +591,19 @@ const docTemplate = `{
                     "200": {
                         "description": "Success",
                         "schema": {
-                            "$ref": "#/definitions/response.Response"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/handler.TaskView"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "404": {
@@ -404,6 +637,69 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "handler.AccountView": {
+            "type": "object",
+            "properties": {
+                "channel_id": {
+                    "type": "string"
+                },
+                "concurrent_limit": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "current_jobs": {
+                    "type": "integer"
+                },
+                "error_count": {
+                    "type": "integer"
+                },
+                "guild_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "is_disabled": {
+                    "type": "boolean"
+                },
+                "is_healthy": {
+                    "type": "boolean"
+                },
+                "last_error": {
+                    "type": "string"
+                },
+                "last_used_at": {
+                    "type": "string"
+                },
+                "success_count": {
+                    "type": "integer"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.CreateAccountReq": {
+            "type": "object",
+            "required": [
+                "channel_id",
+                "guild_id",
+                "user_token"
+            ],
+            "properties": {
+                "channel_id": {
+                    "type": "string"
+                },
+                "guild_id": {
+                    "type": "string"
+                },
+                "user_token": {
+                    "type": "string"
+                }
+            }
+        },
         "handler.CreateDescribeTaskReq": {
             "type": "object",
             "required": [
@@ -432,6 +728,168 @@ const docTemplate = `{
                 }
             }
         },
+        "handler.PerformTaskActionReq": {
+            "type": "object",
+            "required": [
+                "action_type",
+                "index",
+                "task_id"
+            ],
+            "properties": {
+                "action_type": {
+                    "description": "Operation type",
+                    "type": "string"
+                },
+                "callback_url": {
+                    "type": "string"
+                },
+                "index": {
+                    "description": "Index: 1-4",
+                    "type": "integer"
+                },
+                "task_id": {
+                    "description": "Original task ID",
+                    "type": "string"
+                }
+            }
+        },
+        "handler.TaskListResponse": {
+            "type": "object",
+            "properties": {
+                "tasks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handler.TaskView"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "handler.TaskView": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "error_message": {
+                    "type": "string"
+                },
+                "finished_at": {
+                    "type": "string"
+                },
+                "image_url": {
+                    "type": "string"
+                },
+                "oss_image_url": {
+                    "type": "string"
+                },
+                "parent_task_id": {
+                    "type": "string"
+                },
+                "progress": {
+                    "type": "integer"
+                },
+                "prompt": {
+                    "type": "string"
+                },
+                "status": {
+                    "$ref": "#/definitions/model.TaskStatus"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/definitions/model.TaskType"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.UpdateAccountReq": {
+            "type": "object",
+            "properties": {
+                "channel_id": {
+                    "type": "string"
+                },
+                "concurrent_limit": {
+                    "type": "integer"
+                },
+                "guild_id": {
+                    "type": "string"
+                },
+                "is_disabled": {
+                    "type": "boolean"
+                },
+                "user_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.TaskStatus": {
+            "type": "string",
+            "enum": [
+                "PENDING",
+                "SUBMITTED",
+                "IN_QUEUE",
+                "PROCESSING",
+                "SUCCESS",
+                "FAILED",
+                "TIMEOUT"
+            ],
+            "x-enum-varnames": [
+                "TaskStatusPending",
+                "TaskStatusSubmitted",
+                "TaskStatusInQueue",
+                "TaskStatusProcessing",
+                "TaskStatusSuccess",
+                "TaskStatusFailed",
+                "TaskStatusTimeout"
+            ]
+        },
+        "model.TaskType": {
+            "type": "string",
+            "enum": [
+                "IMAGINE",
+                "DESCRIBE",
+                "UPSCALE",
+                "ZOOM_OUT_2X",
+                "ZOOM_OUT_1_5X",
+                "UPSCALE_SUBTLE",
+                "UPSCALE_CREATIVE"
+            ],
+            "x-enum-comments": {
+                "TaskTypeDescribe": "Describe image",
+                "TaskTypeUpscale": "Upscale",
+                "TaskTypeUpscaleCreative": "Upscale (Creative)",
+                "TaskTypeUpscaleSubtle": "Upscale (Subtle)",
+                "TaskTypeZoomOut1_5x": "Zoom Out 1.5x",
+                "TaskTypeZoomOut2x": "Zoom Out 2x"
+            },
+            "x-enum-descriptions": [
+                "",
+                "Describe image",
+                "Upscale",
+                "Zoom Out 2x",
+                "Zoom Out 1.5x",
+                "Upscale (Subtle)",
+                "Upscale (Creative)"
+            ],
+            "x-enum-varnames": [
+                "TaskTypeImagine",
+                "TaskTypeDescribe",
+                "TaskTypeUpscale",
+                "TaskTypeZoomOut2x",
+                "TaskTypeZoomOut1_5x",
+                "TaskTypeUpscaleSubtle",
+                "TaskTypeUpscaleCreative"
+            ]
+        },
         "response.Response": {
             "type": "object",
             "properties": {
@@ -447,51 +905,110 @@ const docTemplate = `{
                 }
             }
         },
-        "service.CreateAccountRequest": {
+        "service.ProcessingQueueItem": {
             "type": "object",
-            "required": [
-                "channel_id",
-                "guild_id",
-                "user_token"
-            ],
             "properties": {
-                "channel_id": {
+                "created_at": {
                     "type": "string"
                 },
-                "concurrent_limit": {
+                "description": {
+                    "type": "string"
+                },
+                "finished_at": {
+                    "type": "string"
+                },
+                "image_url": {
+                    "type": "string"
+                },
+                "oss_image_url": {
+                    "type": "string"
+                },
+                "parent_task_id": {
+                    "type": "string"
+                },
+                "progress": {
                     "type": "integer"
                 },
-                "guild_id": {
+                "prompt": {
                     "type": "string"
                 },
-                "user_token": {
+                "status": {
+                    "$ref": "#/definitions/model.TaskStatus"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/definitions/model.TaskType"
+                },
+                "updated_at": {
                     "type": "string"
                 }
             }
         },
-        "service.TaskActionRequest": {
+        "service.QueueItem": {
             "type": "object",
-            "required": [
-                "action_type",
-                "index",
-                "task_id"
-            ],
             "properties": {
-                "action_type": {
-                    "description": "Operation type: upscale, zoom_out_2x, zoom_out_1_5x, upscale_subtle, upscale_creative",
+                "image_url": {
                     "type": "string"
                 },
-                "callback_url": {
+                "kind": {
+                    "$ref": "#/definitions/service.QueueMessageKind"
+                },
+                "parent_task_id": {
                     "type": "string"
                 },
-                "index": {
-                    "description": "Index: 1-4, representing the position of the image to be operated on",
-                    "type": "integer",
-                    "maximum": 4,
-                    "minimum": 1
+                "prompt": {
+                    "type": "string"
                 },
                 "task_id": {
-                    "description": "Original task ID",
+                    "type": "string"
+                }
+            }
+        },
+        "service.QueueMessageKind": {
+            "type": "string",
+            "enum": [
+                "imagine",
+                "describe",
+                "action"
+            ],
+            "x-enum-varnames": [
+                "QueueMessageKindImagine",
+                "QueueMessageKindDescribe",
+                "QueueMessageKindAction"
+            ]
+        },
+        "service.QueueStatus": {
+            "type": "object",
+            "properties": {
+                "processing_count": {
+                    "type": "integer"
+                },
+                "processing_tasks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/service.ProcessingQueueItem"
+                    }
+                },
+                "queue_length": {
+                    "type": "integer"
+                },
+                "waiting_in_queue": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/service.QueueItem"
+                    }
+                }
+            }
+        },
+        "service.TaskResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "$ref": "#/definitions/model.TaskStatus"
+                },
+                "task_id": {
                     "type": "string"
                 }
             }

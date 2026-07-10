@@ -1,9 +1,13 @@
 package main
 
 import (
+	"flag"
 	"log"
+	"os"
+	"strings"
 
 	"github.com/trae/midjourney-api/internal/app"
+	"github.com/trae/midjourney-api/pkg/redact"
 
 	_ "github.com/trae/midjourney-api/docs"
 )
@@ -24,12 +28,22 @@ import (
 // @BasePath /
 // @schemes http https
 func main() {
-	app, err := app.New("config/config.yaml")
+	configPath := flag.String("config", defaultConfigPath(), "path to config file")
+	flag.Parse()
+
+	app, err := app.New(*configPath)
 	if err != nil {
-		log.Fatalf("Failed to create application: %v", err)
+		log.Fatalf("Failed to create application: %s", redact.Text(err.Error()))
 	}
 
 	if err := app.Run(); err != nil {
-		log.Fatalf("Failed to run application: %v", err)
+		log.Fatalf("Failed to run application: %s", redact.Text(err.Error()))
 	}
+}
+
+func defaultConfigPath() string {
+	if value := strings.TrimSpace(os.Getenv("MJ_CONFIG")); value != "" {
+		return value
+	}
+	return "config/config.yaml"
 }

@@ -1,4 +1,6 @@
-.PHONY: help build run clean test
+SWAG_VERSION ?= v1.16.6
+
+.PHONY: help build run clean test deps docs lint
 
 help:
 	@echo "Available commands:"
@@ -7,6 +9,7 @@ help:
 	@echo "  make clean    - Clean build artifacts"
 	@echo "  make test     - Run tests"
 	@echo "  make deps     - Install dependencies"
+	@echo "  make docs     - Generate Swagger docs"
 
 deps:
 	go mod download
@@ -24,6 +27,9 @@ clean:
 
 test:
 	go test -v ./...
+
+docs:
+	go run github.com/swaggo/swag/cmd/swag@$(SWAG_VERSION) init -g cmd/server/main.go -o docs
 
 lint:
 	golangci-lint run

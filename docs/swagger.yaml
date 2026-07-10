@@ -1,5 +1,47 @@
 basePath: /
 definitions:
+  handler.AccountView:
+    properties:
+      channel_id:
+        type: string
+      concurrent_limit:
+        type: integer
+      created_at:
+        type: string
+      current_jobs:
+        type: integer
+      error_count:
+        type: integer
+      guild_id:
+        type: string
+      id:
+        type: integer
+      is_disabled:
+        type: boolean
+      is_healthy:
+        type: boolean
+      last_error:
+        type: string
+      last_used_at:
+        type: string
+      success_count:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  handler.CreateAccountReq:
+    properties:
+      channel_id:
+        type: string
+      guild_id:
+        type: string
+      user_token:
+        type: string
+    required:
+    - channel_id
+    - guild_id
+    - user_token
+    type: object
   handler.CreateDescribeTaskReq:
     properties:
       callback_url:
@@ -18,6 +60,126 @@ definitions:
     required:
     - prompt
     type: object
+  handler.PerformTaskActionReq:
+    properties:
+      action_type:
+        description: Operation type
+        type: string
+      callback_url:
+        type: string
+      index:
+        description: 'Index: 1-4'
+        type: integer
+      task_id:
+        description: Original task ID
+        type: string
+    required:
+    - action_type
+    - index
+    - task_id
+    type: object
+  handler.TaskListResponse:
+    properties:
+      tasks:
+        items:
+          $ref: '#/definitions/handler.TaskView'
+        type: array
+      total:
+        type: integer
+    type: object
+  handler.TaskView:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      error_message:
+        type: string
+      finished_at:
+        type: string
+      image_url:
+        type: string
+      oss_image_url:
+        type: string
+      parent_task_id:
+        type: string
+      progress:
+        type: integer
+      prompt:
+        type: string
+      status:
+        $ref: '#/definitions/model.TaskStatus'
+      task_id:
+        type: string
+      type:
+        $ref: '#/definitions/model.TaskType'
+      updated_at:
+        type: string
+    type: object
+  handler.UpdateAccountReq:
+    properties:
+      channel_id:
+        type: string
+      concurrent_limit:
+        type: integer
+      guild_id:
+        type: string
+      is_disabled:
+        type: boolean
+      user_token:
+        type: string
+    type: object
+  model.TaskStatus:
+    enum:
+    - PENDING
+    - SUBMITTED
+    - IN_QUEUE
+    - PROCESSING
+    - SUCCESS
+    - FAILED
+    - TIMEOUT
+    type: string
+    x-enum-varnames:
+    - TaskStatusPending
+    - TaskStatusSubmitted
+    - TaskStatusInQueue
+    - TaskStatusProcessing
+    - TaskStatusSuccess
+    - TaskStatusFailed
+    - TaskStatusTimeout
+  model.TaskType:
+    enum:
+    - IMAGINE
+    - DESCRIBE
+    - UPSCALE
+    - ZOOM_OUT_2X
+    - ZOOM_OUT_1_5X
+    - UPSCALE_SUBTLE
+    - UPSCALE_CREATIVE
+    type: string
+    x-enum-comments:
+      TaskTypeDescribe: Describe image
+      TaskTypeUpscale: Upscale
+      TaskTypeUpscaleCreative: Upscale (Creative)
+      TaskTypeUpscaleSubtle: Upscale (Subtle)
+      TaskTypeZoomOut1_5x: Zoom Out 1.5x
+      TaskTypeZoomOut2x: Zoom Out 2x
+    x-enum-descriptions:
+    - ""
+    - Describe image
+    - Upscale
+    - Zoom Out 2x
+    - Zoom Out 1.5x
+    - Upscale (Subtle)
+    - Upscale (Creative)
+    x-enum-varnames:
+    - TaskTypeImagine
+    - TaskTypeDescribe
+    - TaskTypeUpscale
+    - TaskTypeZoomOut2x
+    - TaskTypeZoomOut1_5x
+    - TaskTypeUpscaleSubtle
+    - TaskTypeUpscaleCreative
   response.Response:
     properties:
       code:
@@ -28,42 +190,77 @@ definitions:
       message:
         type: string
     type: object
-  service.CreateAccountRequest:
+  service.ProcessingQueueItem:
     properties:
-      channel_id:
+      created_at:
         type: string
-      concurrent_limit:
+      description:
+        type: string
+      finished_at:
+        type: string
+      image_url:
+        type: string
+      oss_image_url:
+        type: string
+      parent_task_id:
+        type: string
+      progress:
         type: integer
-      guild_id:
+      prompt:
         type: string
-      user_token:
-        type: string
-    required:
-    - channel_id
-    - guild_id
-    - user_token
-    type: object
-  service.TaskActionRequest:
-    properties:
-      action_type:
-        description: 'Operation type: upscale, zoom_out_2x, zoom_out_1_5x, upscale_subtle,
-          upscale_creative'
-        type: string
-      callback_url:
-        type: string
-      index:
-        description: 'Index: 1-4, representing the position of the image to be operated
-          on'
-        maximum: 4
-        minimum: 1
-        type: integer
+      status:
+        $ref: '#/definitions/model.TaskStatus'
       task_id:
-        description: Original task ID
         type: string
-    required:
-    - action_type
-    - index
-    - task_id
+      type:
+        $ref: '#/definitions/model.TaskType'
+      updated_at:
+        type: string
+    type: object
+  service.QueueItem:
+    properties:
+      image_url:
+        type: string
+      kind:
+        $ref: '#/definitions/service.QueueMessageKind'
+      parent_task_id:
+        type: string
+      prompt:
+        type: string
+      task_id:
+        type: string
+    type: object
+  service.QueueMessageKind:
+    enum:
+    - imagine
+    - describe
+    - action
+    type: string
+    x-enum-varnames:
+    - QueueMessageKindImagine
+    - QueueMessageKindDescribe
+    - QueueMessageKindAction
+  service.QueueStatus:
+    properties:
+      processing_count:
+        type: integer
+      processing_tasks:
+        items:
+          $ref: '#/definitions/service.ProcessingQueueItem'
+        type: array
+      queue_length:
+        type: integer
+      waiting_in_queue:
+        items:
+          $ref: '#/definitions/service.QueueItem'
+        type: array
+    type: object
+  service.TaskResponse:
+    properties:
+      status:
+        $ref: '#/definitions/model.TaskStatus'
+      task_id:
+        type: string
     type: object
 host: localhost:8080
 info:
@@ -88,7 +285,14 @@ paths:
         "200":
           description: Success
           schema:
-            $ref: '#/definitions/response.Response'
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/handler.AccountView'
+                  type: array
+              type: object
         "500":
           description: Internal server error
           schema:
@@ -99,21 +303,27 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create a new Discord account and start its listener
+      description: Create a new Discord account with the default concurrent limit
+        and start its listener. Only guild_id, channel_id, and user_token are accepted.
       parameters:
       - description: Account info
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/service.CreateAccountRequest'
+          $ref: '#/definitions/handler.CreateAccountReq'
       produces:
       - application/json
       responses:
         "200":
           description: Success
           schema:
-            $ref: '#/definitions/response.Response'
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/handler.AccountView'
+              type: object
         "400":
           description: Bad request
           schema:
@@ -127,7 +337,8 @@ paths:
       - Account
   /api/v1/accounts/{id}:
     delete:
-      description: Delete the specified account and stop its listener
+      description: Delete the specified account and stop its listener. Accounts with
+        active tasks cannot be deleted until current_jobs is 0.
       parameters:
       - description: Account ID
         in: path
@@ -156,6 +367,90 @@ paths:
       summary: Delete account
       tags:
       - Account
+    put:
+      consumes:
+      - application/json
+      description: Update the specified Discord account. At least one field must be
+        provided. is_healthy is read-only and managed by listener checks; use the
+        restart endpoint to re-check an account. While current_jobs is greater than
+        0, listener-changing fields (guild_id, channel_id, user_token, and disabling
+        the account) are rejected; concurrent_limit can still be changed.
+      parameters:
+      - description: Account ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Account info
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.UpdateAccountReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/handler.AccountView'
+              type: object
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Account not found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Update account
+      tags:
+      - Account
+  /api/v1/accounts/{id}/restart:
+    post:
+      description: Restart the specified Discord account listener. is_healthy is managed
+        by the server and will be updated after the listener verifies the account.
+      parameters:
+      - description: Account ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/handler.AccountView'
+              type: object
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/response.Response'
+        "404":
+          description: Account not found
+          schema:
+            $ref: '#/definitions/response.Response'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/response.Response'
+      summary: Restart account listener
+      tags:
+      - Account
   /api/v1/tasks:
     get:
       description: Get the task list
@@ -175,6 +470,15 @@ paths:
       responses:
         "200":
           description: Success
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/handler.TaskListResponse'
+              type: object
+        "400":
+          description: Bad request
           schema:
             $ref: '#/definitions/response.Response'
         "500":
@@ -199,7 +503,12 @@ paths:
         "200":
           description: Success
           schema:
-            $ref: '#/definitions/response.Response'
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/handler.TaskView'
+              type: object
         "404":
           description: Task not found
           schema:
@@ -219,14 +528,19 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/service.TaskActionRequest'
+          $ref: '#/definitions/handler.PerformTaskActionReq'
       produces:
       - application/json
       responses:
         "201":
           description: Action submitted
           schema:
-            $ref: '#/definitions/response.Response'
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/service.TaskResponse'
+              type: object
         "400":
           description: Bad request
           schema:
@@ -257,7 +571,12 @@ paths:
         "201":
           description: Created successfully
           schema:
-            $ref: '#/definitions/response.Response'
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/service.TaskResponse'
+              type: object
         "400":
           description: Bad request
           schema:
@@ -287,7 +606,12 @@ paths:
         "201":
           description: Created successfully
           schema:
-            $ref: '#/definitions/response.Response'
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/service.TaskResponse'
+              type: object
         "400":
           description: Bad request
           schema:
@@ -308,7 +632,12 @@ paths:
         "200":
           description: Success
           schema:
-            $ref: '#/definitions/response.Response'
+            allOf:
+            - $ref: '#/definitions/response.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/service.QueueStatus'
+              type: object
         "500":
           description: Internal server error
           schema:

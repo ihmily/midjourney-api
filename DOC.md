@@ -71,3 +71,5 @@ user_token: "User Token"
 guild_id: "server ID"
 channel_id: "channel ID"
 ```
+
+Use these values when creating an account with `POST /api/v1/accounts`.

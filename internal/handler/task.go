@@ -2,10 +2,14 @@ package handler
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/trae/midjourney-api/internal/model"
 	"github.com/trae/midjourney-api/internal/service"
 	"github.com/trae/midjourney-api/pkg/constants"
+	apperrors "github.com/trae/midjourney-api/pkg/errors"
+	"github.com/trae/midjourney-api/pkg/redact"
 	"github.com/trae/midjourney-api/pkg/response"
 )
 
@@ -24,6 +28,27 @@ type CreateImagineTaskReq struct {
 	CallbackURL string `json:"callback_url"`
 }
 
+type TaskListResponse struct {
+	Tasks []TaskView `json:"tasks"`
+	Total int64      `json:"total"`
+}
+
+type TaskView struct {
+	TaskID       string           `json:"task_id"`
+	ParentTaskID string           `json:"parent_task_id,omitempty"`
+	Type         model.TaskType   `json:"type"`
+	Prompt       string           `json:"prompt,omitempty"`
+	Status       model.TaskStatus `json:"status"`
+	Progress     int              `json:"progress"`
+	ImageURL     string           `json:"image_url,omitempty"`
+	OSSImageURL  string           `json:"oss_image_url,omitempty"`
+	ErrorMessage string           `json:"error_message,omitempty"`
+	Description  string           `json:"description,omitempty"`
+	CreatedAt    time.Time        `json:"created_at"`
+	UpdatedAt    time.Time        `json:"updated_at"`
+	FinishedAt   *time.Time       `json:"finished_at,omitempty"`
+}
+
 // CreateImagineTask creates an Imagine task
 // @Summary Create Imagine task
 // @Description Create a Midjourney image generation task based on the given prompt
@@ -31,29 +56,34 @@ type CreateImagineTaskReq struct {
 // @Accept json
 // @Produce json
 // @Param request body CreateImagineTaskReq true "Task request"
-// @Success 201 {object} response.Response "Created successfully"
+// @Success 201 {object} response.Response{data=service.TaskResponse} "Created successfully"
 // @Failure 400 {object} response.Response "Bad request"
 // @Failure 500 {object} response.Response "Internal server error"
 // @Router /api/v1/tasks/imagine [post]
 func (h *TaskHandler) CreateImagineTask(c *gin.Context) {
 	ctx := c.Request.Context()
 	var req CreateImagineTaskReq
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := bindStrictJSON(c, &req); err != nil {
+		response.Error(c, err)
+		return
+	}
+	taskService, err := h.taskServiceOrError()
+	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	// Use fixed UserID = 1 for simplicity
-	userID := constants.DefaultUserID
-
-	resp, err := h.taskService.CreateImagineTask(ctx, &service.CreateTaskRequest{
-		UserID:      userID,
+	resp, err := taskService.CreateImagineTask(ctx, &service.CreateTaskRequest{
 		Prompt:      req.Prompt,
 		CallbackURL: req.CallbackURL,
 	})
 
 	if err != nil {
 		response.Error(c, err)
+		return
+	}
+	if resp == nil {
+		response.Error(c, handlerInternalError("created imagine task result is required"))
 		return
 	}
 
@@ -72,27 +102,33 @@ type CreateDescribeTaskReq struct {
 // @Accept json
 // @Produce json
 // @Param request body CreateDescribeTaskReq true "Describe task request"
-// @Success 201 {object} response.Response "Created successfully"
+// @Success 201 {object} response.Response{data=service.TaskResponse} "Created successfully"
 // @Failure 400 {object} response.Response "Bad request"
 // @Failure 500 {object} response.Response "Internal server error"
 // @Router /api/v1/tasks/describe [post]
 func (h *TaskHandler) CreateDescribeTask(c *gin.Context) {
 	ctx := c.Request.Context()
 	var req CreateDescribeTaskReq
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := bindStrictJSON(c, &req); err != nil {
+		response.Error(c, err)
+		return
+	}
+	taskService, err := h.taskServiceOrError()
+	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	userID := constants.DefaultUserID
-
-	resp, err := h.taskService.CreateDescribeTask(ctx, &service.CreateDescribeTaskRequest{
-		UserID:      userID,
+	resp, err := taskService.CreateDescribeTask(ctx, &service.CreateDescribeTaskRequest{
 		ImageURL:    req.ImageURL,
 		CallbackURL: req.CallbackURL,
 	})
 	if err != nil {
 		response.Error(c, err)
+		return
+	}
+	if resp == nil {
+		response.Error(c, handlerInternalError("created describe task result is required"))
 		return
 	}
 
@@ -105,20 +141,29 @@ func (h *TaskHandler) CreateDescribeTask(c *gin.Context) {
 // @Tags Task
 // @Produce json
 // @Param task_id path string true "Task ID"
-// @Success 200 {object} response.Response "Success"
+// @Success 200 {object} response.Response{data=TaskView} "Success"
 // @Failure 404 {object} response.Response "Task not found"
 // @Router /api/v1/tasks/{task_id} [get]
 func (h *TaskHandler) GetTask(c *gin.Context) {
 	ctx := c.Request.Context()
 	taskID := c.Param("task_id")
-
-	task, err := h.taskService.GetTask(ctx, taskID)
+	taskService, err := h.taskServiceOrError()
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, task)
+	task, err := taskService.GetTask(ctx, taskID)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	if task == nil {
+		response.Error(c, handlerInternalError("task result is required"))
+		return
+	}
+
+	response.Success(c, taskViewFromModel(task))
 }
 
 // ListTasks returns the task list
@@ -128,27 +173,100 @@ func (h *TaskHandler) GetTask(c *gin.Context) {
 // @Produce json
 // @Param limit query int false "Page size" default(10)
 // @Param offset query int false "Offset" default(0)
-// @Success 200 {object} response.Response "Success"
+// @Success 200 {object} response.Response{data=TaskListResponse} "Success"
+// @Failure 400 {object} response.Response "Bad request"
 // @Failure 500 {object} response.Response "Internal server error"
 // @Router /api/v1/tasks [get]
 func (h *TaskHandler) ListTasks(c *gin.Context) {
 	ctx := c.Request.Context()
-	// Use fixed UserID = 1 for simplicity
-	userID := constants.DefaultUserID
 
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
-	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
-
-	tasks, total, err := h.taskService.ListTasks(ctx, userID, limit, offset)
+	limit, offset, err := parseListPagination(c)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	taskService, err := h.taskServiceOrError()
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, gin.H{
-		"tasks": tasks,
-		"total": total,
+	tasks, total, err := taskService.ListTasks(ctx, limit, offset)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, TaskListResponse{
+		Tasks: taskViewsFromModels(tasks),
+		Total: total,
 	})
+}
+
+func taskViewsFromModels(tasks []model.Task) []TaskView {
+	views := make([]TaskView, 0, len(tasks))
+	for i := range tasks {
+		views = append(views, taskViewFromModel(&tasks[i]))
+	}
+	return views
+}
+
+func taskViewFromModel(task *model.Task) TaskView {
+	if task == nil {
+		return TaskView{}
+	}
+
+	return TaskView{
+		TaskID:       task.TaskID,
+		ParentTaskID: task.ParentTaskID,
+		Type:         task.Type,
+		Prompt:       task.Prompt,
+		Status:       task.Status,
+		Progress:     task.Progress,
+		ImageURL:     task.ImageURL,
+		OSSImageURL:  task.OSSImageURL,
+		ErrorMessage: redact.Text(task.ErrorMessage),
+		Description:  task.Description,
+		CreatedAt:    task.CreatedAt,
+		UpdatedAt:    task.UpdatedAt,
+		FinishedAt:   task.FinishedAt,
+	}
+}
+
+func parseListPagination(c *gin.Context) (int, int, error) {
+	limit, err := parseOptionalIntQuery(c, "limit", constants.DefaultListLimit)
+	if err != nil {
+		return 0, 0, err
+	}
+	if limit <= 0 {
+		return 0, 0, apperrors.NewInvalidInput("limit must be greater than 0")
+	}
+	if limit > constants.MaxListLimit {
+		limit = constants.MaxListLimit
+	}
+
+	offset, err := parseOptionalIntQuery(c, "offset", 0)
+	if err != nil {
+		return 0, 0, err
+	}
+	if offset < 0 {
+		return 0, 0, apperrors.NewInvalidInput("offset must be greater than or equal to 0")
+	}
+
+	return limit, offset, nil
+}
+
+func parseOptionalIntQuery(c *gin.Context, key string, defaultValue int) (int, error) {
+	raw := c.Query(key)
+	if raw == "" {
+		return defaultValue, nil
+	}
+
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, apperrors.NewInvalidInput(key + " must be an integer")
+	}
+	return value, nil
 }
 
 // GetQueueList retrieves the current task queue list
@@ -156,14 +274,23 @@ func (h *TaskHandler) ListTasks(c *gin.Context) {
 // @Description Get the list of tasks currently waiting to be processed
 // @Tags Task
 // @Produce json
-// @Success 200 {object} response.Response "Success"
+// @Success 200 {object} response.Response{data=service.QueueStatus} "Success"
 // @Failure 500 {object} response.Response "Internal server error"
 // @Router /api/v1/tasks/queue [get]
 func (h *TaskHandler) GetQueueList(c *gin.Context) {
 	ctx := c.Request.Context()
-	queueTasks, err := h.taskService.GetQueueList(ctx)
+	taskService, err := h.taskServiceOrError()
 	if err != nil {
 		response.Error(c, err)
+		return
+	}
+	queueTasks, err := taskService.GetQueueList(ctx)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	if queueTasks == nil {
+		response.Error(c, handlerInternalError("queue status result is required"))
 		return
 	}
 
@@ -176,24 +303,59 @@ func (h *TaskHandler) GetQueueList(c *gin.Context) {
 // @Tags Task
 // @Accept json
 // @Produce json
-// @Param request body service.TaskActionRequest true "Action request"
-// @Success 201 {object} response.Response "Action submitted"
+// @Param request body PerformTaskActionReq true "Action request"
+// @Success 201 {object} response.Response{data=service.TaskResponse} "Action submitted"
 // @Failure 400 {object} response.Response "Bad request"
 // @Failure 500 {object} response.Response "Internal server error"
 // @Router /api/v1/tasks/action [post]
 func (h *TaskHandler) PerformTaskAction(c *gin.Context) {
 	ctx := c.Request.Context()
-	var req service.TaskActionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var req PerformTaskActionReq
+	if err := bindStrictJSON(c, &req); err != nil {
 		response.Error(c, err)
 		return
 	}
-
-	resp, err := h.taskService.PerformTaskAction(ctx, &req)
+	taskService, err := h.taskServiceOrError()
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
+	resp, err := taskService.PerformTaskAction(ctx, &service.TaskActionRequest{
+		TaskID:      req.TaskID,
+		ActionType:  req.ActionType,
+		Index:       req.indexValue(),
+		CallbackURL: req.CallbackURL,
+	})
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	if resp == nil {
+		response.Error(c, handlerInternalError("task action result is required"))
+		return
+	}
+
 	response.Created(c, resp)
+}
+
+type PerformTaskActionReq struct {
+	TaskID      string `json:"task_id" binding:"required"`     // Original task ID
+	ActionType  string `json:"action_type" binding:"required"` // Operation type
+	Index       *int   `json:"index" binding:"required"`       // Index: 1-4
+	CallbackURL string `json:"callback_url"`
+}
+
+func (r PerformTaskActionReq) indexValue() int {
+	if r.Index == nil {
+		return 0
+	}
+	return *r.Index
+}
+
+func (h *TaskHandler) taskServiceOrError() (service.TaskService, error) {
+	if h == nil || h.taskService == nil {
+		return nil, handlerInternalError("task service is required")
+	}
+	return h.taskService, nil
 }

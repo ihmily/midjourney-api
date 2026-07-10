@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	alioss "github.com/aliyun/aliyun-oss-go-sdk/oss"
@@ -18,6 +19,11 @@ type aliyunUploader struct {
 }
 
 func newAliyunUploader(cfg *appconfig.AliyunOSSConfig, logger *zap.Logger) (Uploader, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("oss.aliyun config is required")
+	}
+	logger = ossLogger(logger)
+
 	opts := []alioss.ClientOption{}
 	endpoint := cfg.Endpoint
 	if cfg.IsCname && cfg.CnameDomain != "" {
@@ -27,16 +33,16 @@ func newAliyunUploader(cfg *appconfig.AliyunOSSConfig, logger *zap.Logger) (Uplo
 
 	client, err := alioss.New(endpoint, cfg.AccessKeyID, cfg.AccessKeySecret, opts...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Aliyun OSS client: %w", err)
+		return nil, ossSDKError("failed to create Aliyun OSS client", err)
 	}
 
 	bucket, err := client.Bucket(cfg.BucketName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get Aliyun OSS bucket: %w", err)
+		return nil, ossSDKError("failed to get Aliyun OSS bucket", err)
 	}
 
 	logger.Info("Aliyun OSS uploader initialized",
-		zap.String("endpoint", cfg.Endpoint),
+		zap.String("endpoint", logURL(cfg.Endpoint)),
 		zap.String("bucket", cfg.BucketName),
 	)
 
@@ -48,7 +54,7 @@ func newAliyunUploader(cfg *appconfig.AliyunOSSConfig, logger *zap.Logger) (Uplo
 }
 
 func (u *aliyunUploader) UploadFromURL(ctx context.Context, taskID string, imageURL string) (string, error) {
-	data, contentType, err := downloadImage(imageURL)
+	data, contentType, err := downloadImage(ctx, imageURL)
 	if err != nil {
 		return "", err
 	}
@@ -58,7 +64,7 @@ func (u *aliyunUploader) UploadFromURL(ctx context.Context, taskID string, image
 	if err := u.bucket.PutObject(key, bytes.NewReader(data),
 		alioss.ContentType(contentType),
 	); err != nil {
-		return "", fmt.Errorf("Aliyun OSS PutObject failed: %w", err)
+		return "", ossSDKError("Aliyun OSS PutObject failed", err)
 	}
 
 	ossURL, err := u.buildURL(key)
@@ -69,32 +75,31 @@ func (u *aliyunUploader) UploadFromURL(ctx context.Context, taskID string, image
 	u.logger.Info("Image uploaded to Aliyun OSS",
 		zap.String("task_id", taskID),
 		zap.String("key", key),
-		zap.String("oss_url", ossURL),
+		zap.String("oss_url", logURL(ossURL)),
 	)
 	return ossURL, nil
 }
 
-// buildURL builds the object access URL (supports signed, CNAME, and standard三种 modes)
 func (u *aliyunUploader) buildURL(key string) (string, error) {
-	// Mode 1: Signed URL
 	if u.cfg.ToSign {
 		signedURL, err := u.bucket.SignURL(key, alioss.HTTPGet, int64(u.cfg.SignExpires))
 		if err != nil {
-			return "", fmt.Errorf("failed to sign Aliyun OSS URL: %w", err)
+			return "", ossSDKError("failed to sign Aliyun OSS URL", err)
 		}
 		return signedURL, nil
 	}
 
-	// Mode 2: Custom Domain (CNAME)
+	escapedKey := objectKeyURLPath(key)
 	if u.cfg.IsCname && u.cfg.CnameDomain != "" {
 		domain := strings.TrimSuffix(u.cfg.CnameDomain, "/")
-		return fmt.Sprintf("%s/%s", domain, key), nil
+		return fmt.Sprintf("%s/%s", domain, escapedKey), nil
 	}
 
-	// Mode 3: Standard OSS Domain: https://{bucket}.{endpoint}/{key}
-	endpoint := u.cfg.Endpoint
-	endpoint = strings.TrimSuffix(endpoint, "/")
-	endpoint = strings.TrimPrefix(endpoint, "https://")
-	endpoint = strings.TrimPrefix(endpoint, "http://")
-	return fmt.Sprintf("https://%s.%s/%s", u.cfg.BucketName, endpoint, key), nil
+	endpoint := strings.TrimSuffix(u.cfg.Endpoint, "/")
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.Host == "" {
+		return "", fmt.Errorf("invalid Aliyun OSS endpoint URL")
+	}
+	endpoint = parsed.Host
+	return fmt.Sprintf("https://%s.%s/%s", u.cfg.BucketName, endpoint, escapedKey), nil
 }

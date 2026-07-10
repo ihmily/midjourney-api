@@ -8,7 +8,7 @@ An unofficial Midjourney API service that interacts with Midjourney via Discord 
 
 - **Image Generation**: Call Midjourney `/imagine` command with a prompt to generate images
 - **Task Actions**: Support post-processing actions such as Upscale and Zoom Out
-- **Multi-Account Management**: Configure multiple Discord accounts for concurrent processing and load balancing
+- **Multi-Account Management**: Manage Discord accounts via API/database for concurrent processing and load balancing
 - **Task Queue**: Redis-based async task queue with multi-worker concurrent consumption
 - **Task Callback**: Support task status change callback, including progress updates
 - **Object Storage**: Automatically upload generated images to Aliyun OSS or AWS S3
@@ -72,10 +72,14 @@ cd midjourney-api
 
 # 2. Edit the configuration file
 cp config/config.yaml.example config/config.yaml
-# Fill in Discord Token, Guild ID, Channel ID, etc.
+# Fill in global Discord command, database, Redis, and OSS settings.
+# Discord account credentials are added later via POST /api/v1/accounts.
 
 # 3. Start the service
 docker-compose up -d
+
+# 4. Add Discord accounts through the API after the service is running
+# POST /api/v1/accounts with guild_id, channel_id, and user_token.
 ```
 
 Access the service at `http://localhost:8080`
@@ -91,20 +95,33 @@ docker-compose up -d postgres redis
 
 # 3. Edit the configuration file
 # Edit config/config.yaml
+# Fill in global Discord command, database, Redis, and OSS settings.
+# Discord account credentials are added later via POST /api/v1/accounts.
 
 # 4. Generate Swagger docs
-swag init -g cmd/server/main.go -o docs
+make docs
 
 # 5. Build
 go build -o bin/server.exe ./cmd/server
 
 # 6. Run
 ./bin/server
+# Optional: ./bin/server -config config/config.yaml
+# Or set MJ_CONFIG=config/config.yaml
+# Config values can also be overridden with MJ_* environment variables,
+# for example MJ_SERVER_PORT, MJ_DATABASE_HOST, MJ_REDIS_HOST, MJ_TASK_WORKER_COUNT.
+
+# 7. Add Discord accounts through the API after the service is running
+# POST /api/v1/accounts with guild_id, channel_id, and user_token.
 ```
 
 ## Configuration
 
 Edit `config/config.yaml`:
+
+`config.yaml` stores global runtime settings. Add, update, disable, or delete Discord accounts through `/api/v1/accounts`.
+
+Environment variables use the `MJ_` prefix and uppercase config path, for example `task.worker_count` becomes `MJ_TASK_WORKER_COUNT`.
 
 ```yaml
 server:
@@ -131,7 +148,7 @@ discord:
   api_base_url: "https://discord.com/api/v9"
 
 task:
-  timeout: 300       # Task timeout in seconds
+  timeout: 300       # Worker timeout and stale active task timeout in seconds
   max_retries: 3     # Maximum retry attempts
   worker_count: 3    # Worker concurrency
 
@@ -205,12 +222,21 @@ Supported `action_type` values for `/api/v1/tasks/action`:
 ### Account Management
 
 Midjourney Accounts are managed dynamically via API.
+`config.yaml` only contains global Discord command settings and does not contain account credentials.
+When creating an account, only `guild_id`, `channel_id`, and `user_token` are accepted. The default `concurrent_limit` is `20`; update it later with `PUT /api/v1/accounts/:id` if needed. Account responses intentionally omit `user_token`.
+`is_disabled` is the administrative switch; `is_healthy` is read-only runtime health and is updated by listener checks.
+Accounts with active tasks (`current_jobs > 0`) cannot be deleted, disabled, or moved to another `guild_id` / `channel_id` / `user_token`; wait for active tasks to finish first. `concurrent_limit` can still be changed while tasks are active.
+`success_count` and `error_count` count terminal task outcomes, not merely Discord submission attempts.
+Each `guild_id` + `channel_id` pair can only have one account to keep listener matching unambiguous.
+Redis task messages only store `account_id`; workers load the latest account credentials from the database when processing.
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/api/v1/accounts` | Add an account and start its Discord listener |
 | `GET` | `/api/v1/accounts` | List all accounts |
-| `DELETE` | `/api/v1/accounts/:id` | Delete an account and stop its listener |
+| `PUT` | `/api/v1/accounts/:id` | Update account settings; listener-changing fields are blocked while `current_jobs > 0` |
+| `POST` | `/api/v1/accounts/:id/restart` | Restart the listener and re-check account health |
+| `DELETE` | `/api/v1/accounts/:id` | Delete an idle account and stop its listener |
 
 For how to obtain the `user_token`, `guild_id`, and `channel_id` required when adding an account, please refer to [DOC.md](./DOC.md).
 
@@ -229,6 +255,8 @@ curl 'http://localhost:8080/api/v1/tasks/imagine' \
   -H 'Content-Type: application/json' \
   --data-raw $'{\n  "prompt": "a cute cat",\n  "callback_url": ""\n}'
 ```
+
+`callback_url` and `describe.image_url` must be HTTP(S) URLs without userinfo. Runtime outbound requests only allow public destinations; localhost, private networks, link-local ranges, CGNAT, documentation ranges, benchmark ranges, and other special-use addresses are blocked.
 
 **Query task status**
 

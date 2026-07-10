@@ -28,9 +28,9 @@ func Setup(r *gin.Engine, taskHandler *handler.TaskHandler, accountHandler *hand
 			tasks.POST("/imagine", taskHandler.CreateImagineTask)
 			tasks.POST("/describe", taskHandler.CreateDescribeTask)
 			tasks.POST("/action", taskHandler.PerformTaskAction)
-			tasks.GET("/:task_id", taskHandler.GetTask)
 			tasks.GET("", taskHandler.ListTasks)
 			tasks.GET("/queue", taskHandler.GetQueueList)
+			tasks.GET("/:task_id", taskHandler.GetTask)
 		}
 
 		// Account related
@@ -38,6 +38,8 @@ func Setup(r *gin.Engine, taskHandler *handler.TaskHandler, accountHandler *hand
 		{
 			accounts.POST("", accountHandler.CreateAccount)
 			accounts.GET("", accountHandler.ListAccounts)
+			accounts.POST("/:id/restart", accountHandler.RestartAccount)
+			accounts.PUT("/:id", accountHandler.UpdateAccount)
 			accounts.DELETE("/:id", accountHandler.DeleteAccount)
 		}
 	}

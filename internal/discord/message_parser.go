@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/trae/midjourney-api/pkg/constants"
 	"go.uber.org/zap"
 )
 
@@ -30,6 +31,10 @@ type ParsedMessage struct {
 }
 
 func NewMessageParser(midjourneyBotID string, logger *zap.Logger) *MessageParser {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+
 	return &MessageParser{
 		logger:          logger,
 		midjourneyBotID: midjourneyBotID,
@@ -46,13 +51,17 @@ func NewMessageParser(midjourneyBotID string, logger *zap.Logger) *MessageParser
 
 // Parse discordgo message
 func (p *MessageParser) ParseDiscordMessage(msg *discordgo.Message) *ParsedMessage {
+	if msg == nil {
+		return nil
+	}
+
 	parsed := &ParsedMessage{
 		MessageID: msg.ID,
 		Progress:  0,
 		Status:    "unknown",
 	}
 
-	if msg.Author.ID != p.midjourneyBotID {
+	if msg.Author != nil && msg.Author.ID != p.midjourneyBotID {
 		return parsed
 	}
 
@@ -67,14 +76,20 @@ func (p *MessageParser) ParseDiscordMessage(msg *discordgo.Message) *ParsedMessa
 
 	if matches := p.progressRegex.FindStringSubmatch(content); len(matches) > 1 {
 		if progress, err := strconv.Atoi(matches[1]); err == nil {
-			parsed.Progress = progress
-
-			if progress == 0 {
-				parsed.Status = "pending"
-			} else if progress == 100 {
-				parsed.Status = "completed"
+			if !validParsedProgress(progress) {
+				p.logger.Warn("Ignoring out-of-range Midjourney progress",
+					zap.String("message_id", parsed.MessageID),
+					zap.Int("progress", progress))
 			} else {
-				parsed.Status = "processing"
+				parsed.Progress = progress
+
+				if progress == constants.MinTaskProgress {
+					parsed.Status = "pending"
+				} else if progress == constants.MaxTaskProgress {
+					parsed.Status = "completed"
+				} else {
+					parsed.Status = "processing"
+				}
 			}
 		}
 	}
@@ -99,6 +114,9 @@ func (p *MessageParser) ParseDiscordMessage(msg *discordgo.Message) *ParsedMessa
 
 	if parsed.ImageURL == "" && len(msg.Embeds) > 0 {
 		for _, embed := range msg.Embeds {
+			if embed == nil {
+				continue
+			}
 			if embed.Image != nil && embed.Image.URL != "" {
 				parsed.ImageURL = embed.Image.URL
 				break
@@ -111,18 +129,25 @@ func (p *MessageParser) ParseDiscordMessage(msg *discordgo.Message) *ParsedMessa
 			parsed.ImageURL = matches[0]
 		}
 	}
+	if parsed.ImageURL != "" && parsed.Progress == 0 {
+		parsed.Progress = 100
+		parsed.Status = "completed"
+	}
 
 	if len(msg.Components) > 0 {
 		parsed.Buttons = p.parseDiscordButtons(msg.Components)
 	}
 
-	if strings.Contains(content, "failed") || strings.Contains(content, "error") {
+	if parsed.Status == "unknown" && isFailureContent(content) {
 		parsed.Status = "failed"
 	}
 
 	// Detect describe result: Midjourney returns descriptions in embed.Description
 	describeText := ""
 	for _, embed := range msg.Embeds {
+		if embed == nil {
+			continue
+		}
 		if strings.Contains(embed.Description, "1\ufe0f\u20e3") && strings.Contains(embed.Description, "2\ufe0f\u20e3") {
 			describeText = embed.Description
 			break
@@ -144,6 +169,15 @@ func (p *MessageParser) ParseDiscordMessage(msg *discordgo.Message) *ParsedMessa
 	}
 
 	return parsed
+}
+
+func validParsedProgress(progress int) bool {
+	return progress >= constants.MinTaskProgress && progress <= constants.MaxTaskProgress
+}
+
+func isFailureContent(content string) bool {
+	content = strings.ToLower(content)
+	return strings.Contains(content, "failed") || strings.Contains(content, "error")
 }
 
 func (p *MessageParser) parseDiscordButtons(components []discordgo.MessageComponent) []string {

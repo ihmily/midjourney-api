@@ -16,16 +16,18 @@ const (
 	ErrCodeForbidden    ErrorCode = "FORBIDDEN"
 
 	// Account related error codes
-	ErrCodeAccountNotFound     ErrorCode = "ACCOUNT_NOT_FOUND"
-	ErrCodeAccountUnavailable  ErrorCode = "ACCOUNT_UNAVAILABLE"
-	ErrCodeAccountUnhealthy    ErrorCode = "ACCOUNT_UNHEALTHY"
-	ErrCodeAccountLimitReached ErrorCode = "ACCOUNT_LIMIT_REACHED"
+	ErrCodeAccountNotFound      ErrorCode = "ACCOUNT_NOT_FOUND"
+	ErrCodeAccountAlreadyExists ErrorCode = "ACCOUNT_ALREADY_EXISTS"
+	ErrCodeAccountUnavailable   ErrorCode = "ACCOUNT_UNAVAILABLE"
+	ErrCodeAccountUnhealthy     ErrorCode = "ACCOUNT_UNHEALTHY"
+	ErrCodeAccountLimitReached  ErrorCode = "ACCOUNT_LIMIT_REACHED"
 
 	// Task related error codes
-	ErrCodeTaskNotFound      ErrorCode = "TASK_NOT_FOUND"
-	ErrCodeTaskNotCompleted  ErrorCode = "TASK_NOT_COMPLETED"
-	ErrCodeTaskCreateFailed  ErrorCode = "TASK_CREATE_FAILED"
-	ErrCodeTaskProcessFailed ErrorCode = "TASK_PROCESS_FAILED"
+	ErrCodeTaskNotFound        ErrorCode = "TASK_NOT_FOUND"
+	ErrCodeTaskAlreadyTerminal ErrorCode = "TASK_ALREADY_TERMINAL"
+	ErrCodeTaskNotCompleted    ErrorCode = "TASK_NOT_COMPLETED"
+	ErrCodeTaskCreateFailed    ErrorCode = "TASK_CREATE_FAILED"
+	ErrCodeTaskProcessFailed   ErrorCode = "TASK_PROCESS_FAILED"
 
 	// Discord related error codes
 	ErrCodeDiscordAPIError ErrorCode = "DISCORD_API_ERROR"
@@ -90,12 +92,21 @@ func NewAccountNotFound(accountID uint) *AppError {
 	return New(ErrCodeAccountNotFound, fmt.Sprintf("Account not found: %d", accountID))
 }
 
+func NewAccountAlreadyExists(guildID, channelID string) *AppError {
+	return New(ErrCodeAccountAlreadyExists,
+		fmt.Sprintf("Account already exists for guild %s channel %s", guildID, channelID))
+}
+
 func NewAccountUnavailable(reason string) *AppError {
 	return New(ErrCodeAccountUnavailable, reason)
 }
 
 func NewTaskNotFound(taskID string) *AppError {
 	return New(ErrCodeTaskNotFound, fmt.Sprintf("Task not found: %s", taskID))
+}
+
+func NewTaskAlreadyTerminal(taskID string, status string) *AppError {
+	return New(ErrCodeTaskAlreadyTerminal, fmt.Sprintf("Task already terminal: %s status=%s", taskID, status))
 }
 
 func NewDatabaseError(err error) *AppError {

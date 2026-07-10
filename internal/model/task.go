@@ -3,6 +3,7 @@ package model
 import (
 	"time"
 
+	"github.com/trae/midjourney-api/pkg/constants"
 	"gorm.io/gorm"
 )
 
@@ -18,6 +19,55 @@ const (
 	TaskStatusTimeout    TaskStatus = "TIMEOUT"
 )
 
+func ActiveTaskStatuses() []TaskStatus {
+	return []TaskStatus{
+		TaskStatusPending,
+		TaskStatusSubmitted,
+		TaskStatusInQueue,
+		TaskStatusProcessing,
+	}
+}
+
+func DiscordActiveTaskStatuses() []TaskStatus {
+	return []TaskStatus{
+		TaskStatusSubmitted,
+		TaskStatusInQueue,
+		TaskStatusProcessing,
+	}
+}
+
+func TerminalTaskStatuses() []TaskStatus {
+	return []TaskStatus{
+		TaskStatusSuccess,
+		TaskStatusFailed,
+		TaskStatusTimeout,
+	}
+}
+
+func IsTerminalTaskStatus(status TaskStatus) bool {
+	for _, terminal := range TerminalTaskStatuses() {
+		if status == terminal {
+			return true
+		}
+	}
+	return false
+}
+
+func IsKnownTaskStatus(status TaskStatus) bool {
+	switch status {
+	case TaskStatusPending,
+		TaskStatusSubmitted,
+		TaskStatusInQueue,
+		TaskStatusProcessing,
+		TaskStatusSuccess,
+		TaskStatusFailed,
+		TaskStatusTimeout:
+		return true
+	default:
+		return false
+	}
+}
+
 type TaskType string
 
 const (
@@ -30,23 +80,41 @@ const (
 	TaskTypeUpscaleCreative TaskType = "UPSCALE_CREATIVE" // Upscale (Creative)
 )
 
+func IsKnownTaskType(taskType TaskType) bool {
+	switch taskType {
+	case TaskTypeImagine,
+		TaskTypeDescribe,
+		TaskTypeUpscale,
+		TaskTypeZoomOut2x,
+		TaskTypeZoomOut1_5x,
+		TaskTypeUpscaleSubtle,
+		TaskTypeUpscaleCreative:
+		return true
+	default:
+		return false
+	}
+}
+
+func IsValidTaskProgress(progress int) bool {
+	return progress >= constants.MinTaskProgress && progress <= constants.MaxTaskProgress
+}
+
 type Task struct {
-	ID               uint           `gorm:"primaryKey" json:"id"`
+	ID               uint           `gorm:"primaryKey" json:"-"`
 	TaskID           string         `gorm:"uniqueIndex;size:64;not null" json:"task_id"`
-	UserID           uint           `gorm:"index;not null" json:"user_id"`
-	AccountID        *uint          `gorm:"index" json:"account_id,omitempty"`
+	AccountID        *uint          `gorm:"index" json:"-"`
 	ParentTaskID     string         `gorm:"size:64;index" json:"parent_task_id,omitempty"` // Parent task ID, used for upscale/variation etc. subtasks
 	Type             TaskType       `gorm:"size:32;not null" json:"type"`
 	Prompt           string         `gorm:"type:text" json:"prompt,omitempty"`
 	Status           TaskStatus     `gorm:"size:32;default:'PENDING';index:idx_status_created" json:"status"`
 	Progress         int            `gorm:"default:0" json:"progress"`
-	DiscordMessageID string         `gorm:"size:64;index" json:"discord_message_id,omitempty"`
+	DiscordMessageID string         `gorm:"size:64;index" json:"-"`
 	ImageURL         string         `gorm:"type:text" json:"image_url,omitempty"`
 	OSSImageURL      string         `gorm:"type:text" json:"oss_image_url,omitempty"`
 	ErrorMessage     string         `gorm:"type:text" json:"error_message,omitempty"`
-	Buttons          *string        `gorm:"type:json" json:"buttons,omitempty"`
+	Buttons          *string        `gorm:"type:json" json:"-"`
 	Description      string         `gorm:"type:text" json:"description,omitempty"`
-	CallbackURL      string         `gorm:"type:text" json:"callback_url,omitempty"`
+	CallbackURL      string         `gorm:"type:text" json:"-"`
 	CreatedAt        time.Time      `gorm:"index:idx_status_created" json:"created_at"`
 	UpdatedAt        time.Time      `json:"updated_at"`
 	FinishedAt       *time.Time     `json:"finished_at,omitempty"`

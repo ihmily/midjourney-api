@@ -9,8 +9,8 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Install swag tool
-RUN go install github.com/swaggo/swag/cmd/swag@latest
+# Install the same swag version used by this module for reproducible docs generation.
+RUN go install github.com/swaggo/swag/cmd/swag@v1.16.6
 
 COPY . .
 
@@ -31,6 +31,7 @@ WORKDIR /app
 # Copy binary and default config from build stage
 COPY --from=builder /app/bin/server .
 COPY --from=builder /app/config ./config
+RUN cp config/config.yaml.example config/config.yaml
 
 EXPOSE 8080
 

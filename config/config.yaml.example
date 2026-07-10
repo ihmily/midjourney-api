@@ -21,20 +21,23 @@ redis:
   pool_size: 10
 
 discord:
-  # Midjourney Bot General Configuration (for calling /imagine command and recognizing messages)
-  application_id: "936929561302675456"  # Midjourney Bot Application ID (common to all accounts)
+  # Global Midjourney Bot command configuration.
+  # Account credentials are managed via /api/v1/accounts and stored in the database.
+  application_id: "936929561302675456"
   imagine_command_id: "938956540159881230"
   imagine_command_version: "1237876415471554623"
+  describe_command_id: "1092492867185950852"
+  describe_command_version: "1493662068505706617"
   api_base_url: "https://discord.com/api/v9"
   
 task:
-  timeout: 300 #
+  timeout: 300
   max_retries: 3
   queue_name: "mj:task:queue"
   worker_count: 3
 
 oss:
-  enable: true
+  enable: false
   provider: aliyun           # OSS provider: s3 / aliyun
 
   s3:
@@ -44,7 +47,6 @@ oss:
     region: "ap-southeast-1"
     bucket_name: "midjourney-api"
     prefix: "midjourney"
-    use_ssl: false
 
   aliyun:
     access_key_id: "Your Access Key ID"

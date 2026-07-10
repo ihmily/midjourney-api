@@ -24,12 +24,10 @@ jobs:
           cache: true
 
       - name: Download dependencies
-        run: go mod download && go mod tidy
+        run: go mod download
 
       - name: Generate Swagger docs
-        run: |
-          go install github.com/swaggo/swag/cmd/swag@latest
-          swag init -g cmd/server/main.go -o docs
+        run: make docs
 
       - name: Build Linux amd64
         env:
@@ -75,6 +73,7 @@ jobs:
       - name: Package with config template
         run: |
           cp -r config dist/
+          cp dist/config/config.yaml.example dist/config/config.yaml
           cd dist
           tar -czf midjourney-api-linux-amd64.tar.gz midjourney-api-linux-amd64 config
           tar -czf midjourney-api-linux-arm64.tar.gz midjourney-api-linux-arm64 config

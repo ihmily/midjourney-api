@@ -72,3 +72,5 @@ guild_id: "server ID"
 channel_id: "channel ID"
 ```
 
+这些值用于调用 `POST /api/v1/accounts` 创建账号。
+

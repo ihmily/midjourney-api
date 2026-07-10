@@ -8,7 +8,7 @@ Midjourney 的非官方 API 服务，通过 Discord Bot 与 Midjourney 交互，
 
 - **图片生成**：通过提示词（Prompt）调用 Midjourney `/imagine` 指令生成图片
 - **任务操作**：支持 Upscale、Zoom Out 等图片后处理操作
-- **多账户管理**：支持配置多个 Discord 账户，实现并发处理与负载均衡
+- **多账户管理**：通过 API/数据库管理 Discord 账户，实现并发处理与负载均衡
 - **任务队列**：基于 Redis 的异步任务队列，支持多 Worker 并发消费
 - **任务回调**：支持任务状态变更回调，包含进度
 - **对象存储**：图片生成后自动上传至阿里云 OSS 或 AWS S3
@@ -72,10 +72,14 @@ cd midjourney-api
 
 # 2. 修改配置文件
 cp config/config.yaml.example config/config.yaml
-# 编辑 config/config.yaml，填入 Discord Token、Guild ID、Channel ID 等信息
+# 编辑 config/config.yaml，填入全局 Discord 命令、数据库、Redis、OSS 等配置
+# Discord 账号凭据在服务启动后通过 POST /api/v1/accounts 添加
 
 # 3. 启动服务
 docker-compose up -d
+
+# 4. 服务启动后通过 API 添加 Discord 账号
+# POST /api/v1/accounts，提交 guild_id、channel_id、user_token
 ```
 
 服务启动后访问 `http://localhost:8080`
@@ -91,20 +95,34 @@ docker-compose up -d postgres redis
 
 # 3. 修改配置文件
 # 编辑 config/config.yaml
+# 填入全局 Discord 命令、数据库、Redis、OSS 等配置
+# Discord 账号凭据在服务启动后通过 POST /api/v1/accounts 添加
 
 # 4. 生成Swagger文档
-swag init -g cmd/server/main.go -o docs
+make docs
 
 # 5. 编译构建
 go build -o bin/server.exe ./cmd/server
 
 # 6. 运行服务
 ./bin/server
+# 可选：./bin/server -config config/config.yaml
+# 或设置 MJ_CONFIG=config/config.yaml
+# 配置值也可以用 MJ_* 环境变量覆盖，
+# 例如 MJ_SERVER_PORT、MJ_DATABASE_HOST、MJ_REDIS_HOST、MJ_TASK_WORKER_COUNT。
+
+# 7. 服务启动后通过 API 添加 Discord 账号
+# POST /api/v1/accounts，提交 guild_id、channel_id、user_token
 ```
+服务启动后访问 `http://localhost:8080`
 
 ## 配置说明
 
 编辑 `config/config.yaml`：
+
+`config.yaml` 只保存全局运行配置；账号的新增、更新、禁用、删除都通过 `/api/v1/accounts` 管理。
+
+环境变量使用 `MJ_` 前缀和大写配置路径，例如 `task.worker_count` 对应 `MJ_TASK_WORKER_COUNT`。
 
 ```yaml
 server:
@@ -172,10 +190,10 @@ flowchart TB
     F2 -->|upscale index=1~4<br/>POST /tasks/action| G2[获取单张放大后图片<br/>最终结果]
 
     %% 分支 4: Upscale Subtle (细节增强)
-    C -->|upscale_subtle index=1<br/>POST /tasks/action| H[直接返回单张<br/>细节增强图片]
+    C -->|upscale_subtle index=1~4<br/>POST /tasks/action| H[直接返回单张<br/>细节增强图片]
 
     %% 分支 5: Upscale Creative (创意增强)
-    C -->|upscale_creative<br/>POST /tasks/action| I[直接返回单张<br/>创意增强图片]
+    C -->|upscale_creative index=1~4<br/>POST /tasks/action| I[直接返回单张<br/>创意增强图片]
 
     %% 应用样式类
     class A,B,E1,E2,H,I process;
@@ -218,12 +236,21 @@ flowchart TB
 ### 账户管理
 
 Midjourney 账户通过 API 动态管理。
+`config.yaml` 只保存全局 Discord 命令配置，不保存账号凭据。
+创建账号时只接受 `guild_id`、`channel_id`、`user_token`。`concurrent_limit` 默认是 `20`，需要调整时通过 `PUT /api/v1/accounts/:id` 更新。账号响应会隐藏 `user_token`。
+`is_disabled` 是管理开关；`is_healthy` 是只读运行时健康状态，由监听检测结果更新。
+账号有活跃任务（`current_jobs > 0`）时，不能删除、禁用，或修改 `guild_id` / `channel_id` / `user_token` 这类会打断监听身份的配置；请等待活跃任务结束。`concurrent_limit` 仍可在任务进行中调整。
+`success_count` 和 `error_count` 统计的是任务最终结果，不是单纯的 Discord 提交次数。
+每个 `guild_id` + `channel_id` 只能绑定一个账号，避免监听匹配产生歧义。
+Redis 任务消息只保存 `account_id`；Worker 处理任务时会从数据库读取最新账号凭据。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `POST` | `/api/v1/accounts` | 新增账户并启动 Discord 监听 |
 | `GET` | `/api/v1/accounts` | 获取账户列表 |
-| `DELETE` | `/api/v1/accounts/:id` | 删除账户并停止监听 |
+| `PUT` | `/api/v1/accounts/:id` | 更新账号设置；有活跃任务时会拒绝会打断监听身份的变更 |
+| `POST` | `/api/v1/accounts/:id/restart` | 重启监听并重新检测账号健康状态 |
+| `DELETE` | `/api/v1/accounts/:id` | 删除空闲账户并停止监听 |
 
 新增账户所需的 `user_token`、`guild_id`、`channel_id` 获取方式请参考 [DOC_ZH.md](./DOC_ZH.md)。
 
@@ -242,6 +269,8 @@ curl 'http://localhost:8080/api/v1/tasks/imagine' \
   -H 'Content-Type: application/json' \
   --data-raw $'{\n  "prompt": "a cute cat",\n  "callback_url": ""\n}'
 ```
+
+`callback_url` 和 `describe.image_url` 必须是 HTTP(S) URL，不能包含 userinfo。运行时出站请求只允许访问公网目标；localhost、私有网络、链路本地地址、CGNAT、文档示例网段、benchmark 网段以及其他 special-use 地址都会被拦截。
 
 **查询任务状态**
 

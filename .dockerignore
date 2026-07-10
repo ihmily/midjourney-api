@@ -1,0 +1,25 @@
+# VCS and local editor state
+.git
+.github
+.idea
+.vscode
+
+# Local secrets and environment overrides
+.env
+.env.*
+config/config.yaml
+config/config.local.yaml
+
+# Build/test output
+bin/
+dist/
+*.test
+*.out
+.gocache/
+.gotmp/
+
+# Logs and temporary files
+*.log
+logs/
+tmp/
+temp/
