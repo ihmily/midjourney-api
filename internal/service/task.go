@@ -904,6 +904,14 @@ type TaskActionRequest struct {
 	CallbackURL string `json:"callback_url"`
 }
 
+var supportedTaskActions = []string{
+	"upscale",
+	"zoom_out_2x",
+	"zoom_out_1_5x",
+	"upscale_subtle",
+	"upscale_creative",
+}
+
 // PerformTaskAction
 func (s *taskService) PerformTaskAction(ctx context.Context, req *TaskActionRequest) (*TaskResponse, error) {
 	taskID, actionType, index, callbackURL, err := validateTaskActionRequest(req)
@@ -1000,7 +1008,7 @@ func validateTaskActionRequest(req *TaskActionRequest) (taskID string, actionTyp
 		return
 	}
 	if !isSupportedTaskAction(actionType) {
-		err = apperrors.NewInvalidInput("unsupported action_type")
+		err = unsupportedTaskActionError(actionType)
 		return
 	}
 
@@ -1018,13 +1026,21 @@ func taskActionUnavailableError() error {
 	return apperrors.NewInvalidInput("task action is not available for this task")
 }
 
+func unsupportedTaskActionError(actionType string) error {
+	return apperrors.NewInvalidInput(fmt.Sprintf(
+		"unsupported action_type %q; supported values: %s",
+		actionType,
+		strings.Join(supportedTaskActions, ", "),
+	))
+}
+
 func isSupportedTaskAction(actionType string) bool {
-	switch actionType {
-	case "upscale", "zoom_out_2x", "zoom_out_1_5x", "upscale_subtle", "upscale_creative":
-		return true
-	default:
-		return false
+	for _, supported := range supportedTaskActions {
+		if actionType == supported {
+			return true
+		}
 	}
+	return false
 }
 
 type TaskActionMessage struct {

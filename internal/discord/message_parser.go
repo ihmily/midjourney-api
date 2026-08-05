@@ -16,7 +16,7 @@ type MessageParser struct {
 	progressRegex   *regexp.Regexp
 	imageURLRegex   *regexp.Regexp
 	urlRegex        *regexp.Regexp
-	paramRegex      *regexp.Regexp
+	hyphenRunRegex  *regexp.Regexp
 }
 
 type ParsedMessage struct {
@@ -44,8 +44,8 @@ func NewMessageParser(midjourneyBotID string, logger *zap.Logger) *MessageParser
 		imageURLRegex: regexp.MustCompile(`https://cdn\.discordapp\.com/attachments/\S+`),
 		// Match http/https URL
 		urlRegex: regexp.MustCompile(`<?https?://[^\s>]+>?`),
-		// Match Midjourney parameters (e.g. --v 6.1, --ar 16:9)
-		paramRegex: regexp.MustCompile(`--[a-z]+\s+[^\s-]+`),
+		// Midjourney can render a Unicode dash from the submitted prompt as "--".
+		hyphenRunRegex: regexp.MustCompile(`-+`),
 	}
 }
 
@@ -205,50 +205,46 @@ func (p *MessageParser) MatchTaskByPrompt(messagePrompt, taskPrompt string) bool
 		return false
 	}
 
-	msgPrompt := strings.ToLower(strings.TrimSpace(messagePrompt))
-	tskPrompt := strings.ToLower(strings.TrimSpace(taskPrompt))
+	msgPrompt := p.normalizePromptForMatch(messagePrompt)
+	tskPrompt := p.normalizePromptForMatch(taskPrompt)
+
+	if msgPrompt == "" || tskPrompt == "" {
+		return false
+	}
 
 	if msgPrompt == tskPrompt {
 		return true
 	}
 
-	msgPromptNoURL := p.removeURLsAndParams(msgPrompt)
-	tskPromptNoURL := p.removeURLsAndParams(tskPrompt)
-
-	if msgPromptNoURL != "" && tskPromptNoURL != "" {
-		if msgPromptNoURL == tskPromptNoURL {
-			return true
-		}
-
-		if strings.Contains(msgPromptNoURL, tskPromptNoURL) || strings.Contains(tskPromptNoURL, msgPromptNoURL) {
-			return true
-		}
-
-		maxLen := 100
-		if len(msgPromptNoURL) > maxLen {
-			msgPromptNoURL = msgPromptNoURL[:maxLen]
-		}
-		if len(tskPromptNoURL) > maxLen {
-			tskPromptNoURL = tskPromptNoURL[:maxLen]
-		}
-
-		if strings.Contains(msgPromptNoURL, tskPromptNoURL) || strings.Contains(tskPromptNoURL, msgPromptNoURL) {
-			return true
-		}
-	}
-
-	if strings.Contains(msgPrompt, tskPrompt) {
-		return true
-	}
-
-	return false
+	return isHighCoveragePromptSubstring(msgPrompt, tskPrompt)
 }
 
-func (p *MessageParser) removeURLsAndParams(text string) string {
+func (p *MessageParser) normalizePromptForMatch(text string) string {
+	text = strings.ToLower(strings.TrimSpace(text))
 	result := p.urlRegex.ReplaceAllString(text, "")
-	result = p.paramRegex.ReplaceAllString(result, "")
+	result = strings.NewReplacer(
+		"\u2010", "-", "\u2011", "-", "\u2012", "-", "\u2013", "-", "\u2014", "-", "\u2015", "-", "\u2212", "-",
+		"\u2018", "'", "\u2019", "'", "\u201c", `"`, "\u201d", `"`,
+		"\u00a0", " ",
+	).Replace(result)
+	result = p.hyphenRunRegex.ReplaceAllString(result, "-")
 	result = strings.Join(strings.Fields(result), " ")
 	return strings.TrimSpace(result)
+}
+
+func isHighCoveragePromptSubstring(left, right string) bool {
+	shorter, longer := left, right
+	if len([]rune(shorter)) > len([]rune(longer)) {
+		shorter, longer = longer, shorter
+	}
+
+	shorterRunes := len([]rune(shorter))
+	longerRunes := len([]rune(longer))
+	if shorterRunes < 120 || shorterRunes*100 < longerRunes*90 {
+		return false
+	}
+
+	return strings.Contains(longer, shorter)
 }
 
 // extractFirstDescription extracts only the first numbered description from Midjourney describe results.

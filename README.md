@@ -99,6 +99,9 @@ docker-compose up -d postgres redis
 # Discord account credentials are added later via POST /api/v1/accounts.
 
 # 4. Generate Swagger docs
+go run github.com/swaggo/swag/cmd/swag@v1.16.6 init -g cmd/server/main.go -o docs
+
+# Or, if GNU Make is installed
 make docs
 
 # 5. Build

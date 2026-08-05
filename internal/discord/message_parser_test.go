@@ -1,6 +1,7 @@
 package discord
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/bwmarrin/discordgo"
@@ -154,6 +155,43 @@ func TestParseDiscordMessageIgnoresOutOfRangeProgress(t *testing.T) {
 	}
 	if parsed.Progress != 0 {
 		t.Fatalf("progress = %d, want 0", parsed.Progress)
+	}
+}
+
+func TestMatchTaskByPromptHandlesMidjourneyURLAndDashRewriting(t *testing.T) {
+	parser := NewMessageParser("midjourney-bot", zap.NewNop())
+	padding := "The story centers on archenemies—an angel and a demon—who lose their memories and become an ordinary suburban couple. "
+	taskPrompt := "https://oss.example.com/a-very-long-image-name.png " +
+		"Live-action version: Based on the script, this features a classic male-female dynamic—Image 1 shows the strong female lead. " + padding +
+		"The design should use a balanced vertical position—not too high or too low—and enhanced detail. --ar 9:16"
+	messagePrompt := "https://s.mj.run/abc123 " +
+		"Live-action version: Based on the script, this features a classic male-female dynamic--Image 1 shows the strong female lead. " + padding +
+		"The design should use a balanced vertical position--not too high or too low--and enhanced detail. --ar 9:16"
+
+	if !parser.MatchTaskByPrompt(messagePrompt, taskPrompt) {
+		t.Fatal("expected rewritten Midjourney prompt to match submitted task")
+	}
+}
+
+func TestMatchTaskByPromptDoesNotTreatProseAsMidjourneyParameters(t *testing.T) {
+	parser := NewMessageParser("midjourney-bot", zap.NewNop())
+	common := strings.Repeat("shared introductory words ", 6)
+	taskPrompt := common + "an angel and a demon who become a family"
+	manualPrompt := common + "a spaceship crossing an unknown galaxy"
+
+	if parser.MatchTaskByPrompt(manualPrompt, taskPrompt) {
+		t.Fatal("unrelated manual prompt matched active API task")
+	}
+}
+
+func TestMatchTaskByPromptRejectsLowCoveragePrefix(t *testing.T) {
+	parser := NewMessageParser("midjourney-bot", zap.NewNop())
+	common := strings.Repeat("same opening phrase ", 8)
+	taskPrompt := common + strings.Repeat("api task details ", 8)
+	manualPrompt := common + "manual discord task"
+
+	if parser.MatchTaskByPrompt(manualPrompt, taskPrompt) {
+		t.Fatal("short shared prefix matched a different prompt")
 	}
 }
 

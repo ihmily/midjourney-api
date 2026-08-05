@@ -99,6 +99,9 @@ docker-compose up -d postgres redis
 # Discord 账号凭据在服务启动后通过 POST /api/v1/accounts 添加
 
 # 4. 生成Swagger文档
+go run github.com/swaggo/swag/cmd/swag@v1.16.6 init -g cmd/server/main.go -o docs
+
+# 或者，在已安装 GNU Make 的情况下
 make docs
 
 # 5. 编译构建

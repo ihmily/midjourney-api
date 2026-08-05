@@ -1295,6 +1295,45 @@ func TestPerformTaskActionRejectsInvalidInputBeforeLookup(t *testing.T) {
 	}
 }
 
+func TestPerformTaskActionUnsupportedActionTypeListsSupportedValues(t *testing.T) {
+	svc := &taskService{
+		taskRepo:       newFakeTaskRepo(),
+		accountService: &fakeAccountService{},
+		logger:         zap.NewNop(),
+	}
+
+	resp, err := svc.PerformTaskAction(context.Background(), &TaskActionRequest{
+		TaskID:     "parent-task",
+		ActionType: "upcaled",
+		Index:      1,
+	})
+
+	if resp != nil {
+		t.Fatalf("response = %#v, want nil", resp)
+	}
+
+	var appErr *apperrors.AppError
+	if !errors.As(err, &appErr) {
+		t.Fatalf("error = %T %v, want AppError", err, err)
+	}
+	if appErr.Code != apperrors.ErrCodeInvalidInput {
+		t.Fatalf("code = %q, want %q", appErr.Code, apperrors.ErrCodeInvalidInput)
+	}
+	wantParts := []string{
+		`unsupported action_type "upcaled"`,
+		"upscale",
+		"zoom_out_2x",
+		"zoom_out_1_5x",
+		"upscale_subtle",
+		"upscale_creative",
+	}
+	for _, part := range wantParts {
+		if !strings.Contains(appErr.Message, part) {
+			t.Fatalf("message = %q, want to contain %q", appErr.Message, part)
+		}
+	}
+}
+
 func TestPerformTaskActionTrimsInputBeforePersisting(t *testing.T) {
 	accountID := uint(9)
 	buttons := mustMarshalString(t, []string{"MJ::JOB::upsample::1::button-id"})
